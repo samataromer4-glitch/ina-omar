@@ -1,0 +1,512 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Plus Jakarta Sans", sans-serif;
+}
+
+/* ==========================================================================
+   THEME CONSTANTS - EXECUTIVE MIDNIGHT & ELECTRIC INDIGO (PREMIUM EYE-SAFE DARK)
+   ========================================================================== */
+:root {
+  --bg-app: #05070c;            /* Dark mystic void */
+  --bg-content: #080a11;        /* Modern rich midnight canvas */
+  --bg-card: #0e111a;           /* Sophisticated dark slate card */
+  --bg-sub: #161a26;            /* Deep metallic grey nested panel */
+  --bg-sub-active: #22293c;     /* Indigo active alternate container */
+  
+  --border-card: rgba(255, 255, 255, 0.08); /* Precise thin white border opacity */
+  --border-sub: rgba(99, 102, 241, 0.2);     /* Neon indigo outline glow */
+  
+  --text-primary: #f8fafc;      /* Crisp high-contrast silver-white */
+  --text-secondary: #94a3b8;    /* Smooth cool slate-gray text */
+  --text-muted: #64748b;        /* Muted supporting label gray */
+  
+  --accent-primary: #6366f1;    /* Vibrant Royal Electric Indigo */
+  --accent-secondary: #a78bfa;  /* Bright Mystic Lavender */
+  --accent-hover: #4f46e5;      /* Deep rich indigo */
+  --accent-bg-glow: rgba(99, 102, 241, 0.15);
+  
+  --bg-input: #0b0d16;          /* Darker inputs */
+  --border-input: #1e293b;      /* Clean slate border */
+  
+  --shadow-card: 0 10px 30px -10px rgba(0, 0, 0, 0.6);
+  --shadow-dropdown: 0 20px 40px -15px rgba(0, 0, 0, 0.8);
+  
+  /* Status Badge Colors - Eye-safe Neon Highlights */
+  --badge-success-bg: rgba(16, 185, 129, 0.1);
+  --badge-success-text: #34d399;
+  --badge-success-border: rgba(16, 185, 129, 0.25);
+  
+  --badge-warning-bg: rgba(245, 158, 11, 0.1);
+  --badge-warning-text: #fbbf24;
+  --badge-warning-border: rgba(245, 158, 11, 0.25);
+  
+  --badge-danger-bg: rgba(239, 68, 68, 0.1);
+  --badge-danger-text: #f87171;
+  --badge-danger-border: rgba(239, 68, 68, 0.25);
+  
+  --badge-info-bg: rgba(59, 130, 246, 0.1);
+  --badge-info-text: #60a5fa;
+  --badge-info-border: rgba(59, 130, 246, 0.25);
+
+  /* Deep Royal Dark Sidebar */
+  --sidebar-bg: #07090e;        /* Dark metallic edge */
+  --sidebar-text-active: #ffffff;
+  --sidebar-text-inactive: #94a3b8;
+  --sidebar-border: #131722;
+}
+
+/* Force dark mode behavior always to make the user comfortable */
+html, body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app) !important;
+  color: var(--text-primary) !important;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Typography styles */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
+  color: var(--text-primary) !important;
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-app);
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* ==========================================================================
+   FORCE HIGH QUALITY DARK COLOR OVERRIDES OVER MOCKED STYLES
+   ========================================================================== */
+
+/* Main Layout Grid Resets */
+div.min-h-screen,
+div.bg-\[\#0a0a0a\],
+.bg-\[\#0a0a0a\] {
+  background-color: var(--bg-app) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Header bar integration */
+header.bg-\[\#0a0a0a\]\/80,
+header {
+  background-color: var(--bg-card) !important;
+  border-bottom: 1px solid var(--sidebar-border) !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+/* Card Panel Containers (Map original gray panels to deep rich indigo-tint cards) */
+div[class*="bg-[#0f0f0f]"],
+div[class*="bg-[#121212]"],
+div[class*="bg-[#101010]"],
+div[class*="bg-[#111111]"],
+div[class*="bg-[#1a1a1a]"],
+div[class*="bg-[#0d0d0d]"],
+div[class*="bg-[#050505]"],
+div[class*="bg-[#161616]"],
+.bg-\[\#0f0f0f\],
+.bg-\[\#121212\],
+.bg-\[\#101010\],
+.bg-\[\#111111\],
+.bg-\[\#1a1a1a\],
+.bg-\[\#0d0d0d\],
+.bg-\[\#050505\],
+.bg-\[\#161616\] {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-card) !important;
+  border-radius: 12px !important;
+  box-shadow: var(--shadow-card) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Nested elements (subtle gray background divs inside panels) */
+.bg-\[\#121212\]\/80,
+.bg-\[\#121212\]\/40,
+.bg-\[\#121212\]\/60,
+.bg-black\/10,
+.bg-black\/20,
+.bg-black\/40 {
+  background-color: var(--bg-sub) !important;
+  border: 1px solid var(--border-card) !important;
+  color: var(--text-primary) !important;
+  border-radius: 8px !important;
+}
+
+/* Inner nested sub-boxes in cards */
+div[class*="bg-[#0a0a0a]"] div[class*="bg-[#0a0a0a]"],
+.bg-\[\#0f0f0f\] .bg-\[\#0a0a0a\],
+.bg-\[\#121212\] .bg-\[\#0a0a0a\],
+.bg-\[\#0f0f0f\] .bg-\[\#121212\],
+.bg-\[\#121212\] .bg-\[\#121212\] {
+  background-color: var(--bg-sub) !important;
+  border: 1px solid var(--border-card) !important;
+  border-radius: 8px !important;
+}
+
+/* Text Colors Resolution */
+.text-\[\#e5e5e5\],
+.text-\[\#f5f5f5\],
+.text-slate-100,
+.text-gray-100,
+.text-neutral-200 {
+  color: var(--text-primary) !important;
+}
+
+.text-\[\#a3a3a3\],
+.text-slate-400,
+.text-gray-400 {
+  color: var(--text-secondary) !important;
+}
+
+.text-\[\#737373\],
+.text-slate-500,
+.text-gray-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Border Color Mapping */
+.border-\[\#ffffff10\],
+.border-\[\#ffffff05\],
+.border-\[\#ffffff08\],
+.border-white\/10,
+.border-slate-800,
+.border-zinc-800,
+div[class*="border-[#ffffff10]"] {
+  border-color: var(--border-card) !important;
+}
+
+/* ==========================================================================
+   FORM INPUTS & SELECTION CONTROLS (DEEP obsidan STYLE)
+   ========================================================================== */
+input, select, textarea,
+input.bg-\[\#0a0a0a\],
+select.bg-\[\#0a0a0a\],
+textarea.bg-\[\#0a0a0a\],
+input.bg-\[\#121212\]\/80,
+select.bg-\[\#121212\]\/80 {
+  background-color: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  border: 1.5px solid var(--border-input) !important;
+  border-radius: 8px !important;
+  padding: 0.65rem 0.9rem !important;
+  font-size: 0.85rem !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 3px var(--accent-bg-glow) !important;
+  outline: none !important;
+}
+
+input::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 0.8;
+}
+
+/* ==========================================================================
+   BUTTONS: EXECUTIVE MODERN GLOW
+   ========================================================================== */
+
+/* Primary Command Buttons (Transformed to Electric Purple-Indigo Accent) */
+button.bg-\[\#e5e5e5\],
+button.bg-white,
+.bg-\[\#e5e5e5\],
+button.bg-white\/90 {
+  background-color: var(--accent-primary) !important;
+  color: #ffffff !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  font-size: 0.75rem !important;
+  padding: 0.7rem 1.25rem !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: 1.5px solid transparent !important;
+  box-shadow: 0 4px 14px var(--accent-bg-glow) !important;
+}
+
+button.bg-\[\#e5e5e5\]:hover,
+button.bg-white:hover,
+button.bg-white\/90:hover {
+  background-color: var(--accent-hover) !important;
+  color: #ffffff !important;
+  transform: translateY(-1.5px);
+  box-shadow: 0 6px 18px rgba(99, 102, 241, 0.3) !important;
+}
+
+button.bg-\[\#e5e5e5\]:active,
+button.bg-white:active {
+  transform: translateY(0);
+}
+
+button.bg-\[\#e5e5e5\]:disabled,
+button:disabled {
+  opacity: 0.4 !important;
+  transform: none !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
+/* Secondary outline action buttons */
+button.border-white\/10,
+button[class*="border-[#ffffff10]"],
+button.border-zinc-800,
+button[class*="border-white"] {
+  background-color: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  border: 1.5px solid var(--border-card) !important;
+  border-radius: 8px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+button.border-white\/10:hover,
+button[class*="border-[#ffffff10]"]:hover,
+button.border-zinc-800:hover {
+  background-color: var(--bg-sub) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-sub) !important;
+}
+
+/* ==========================================================================
+   TABLE DESIGN (HI-CONTRAST NEON MATRIX ROW LAYOUT)
+   ========================================================================== */
+table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+}
+
+/* Table header styling */
+thead tr,
+tr.bg-\[\#000000\]\/10,
+tr.bg-black\/10,
+tr.bg-black\/20 {
+  background-color: var(--bg-sub) !important;
+  border-bottom: 2px solid var(--border-card) !important;
+}
+
+thead th {
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  font-size: 0.725rem !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  padding: 1rem 1.25rem !important;
+  text-align: left !important;
+}
+
+/* Table body rows */
+tbody tr {
+  background-color: var(--bg-card) !important;
+  border-bottom: 1px solid var(--border-card) !important;
+  transition: background-color 0.15s ease !important;
+}
+
+tbody tr:hover,
+tr.hover\:bg-\[\#ffffff01\]:hover,
+tr.hover\:bg-white\/5:hover {
+  background-color: var(--bg-sub) !important;
+}
+
+td {
+  padding: 1rem 1.25rem !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.825rem !important;
+}
+
+/* ==========================================================================
+   EXECUTIVE SIDEBAR NAVIGATION STYLING (ANCHORED ELITE DARK)
+   ========================================================================== */
+aside {
+  background-color: var(--sidebar-bg) !important;
+  border-right: 1px solid var(--sidebar-border) !important;
+}
+
+/* Ensure all labels, titles, details are beautifully silver-white & visible */
+aside h2,
+aside h3,
+aside p,
+aside span,
+aside strong,
+aside h1 {
+  color: #ffffff !important;
+}
+
+aside .text-\[\#737373\],
+aside .text-slate-400 {
+  color: #94a3b8 !important;
+}
+
+/* Unselected navigation tabs */
+aside nav button,
+aside nav a {
+  color: var(--sidebar-text-inactive) !important;
+  font-weight: 500 !important;
+  font-size: 0.825rem !important;
+  border-radius: 6px !important;
+  padding: 0.75rem 1rem !important;
+  margin-bottom: 0.3rem !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border-left: 3px solid transparent !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.75rem !important;
+}
+
+/* Hover sidebar elements */
+aside nav button:hover,
+aside nav a:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #ffffff !important;
+  padding-left: 1.15rem !important;
+}
+
+/* Selected active tab (Vibrant Royal Electric Indigo & Border highlight) */
+aside nav button.bg-\[\#ffffff05\],
+aside nav a.bg-\[\#ffffff05\],
+aside nav .bg-\[\#ffffff05\] {
+  background-color: rgba(99, 102, 241, 0.18) !important;
+  border-left: 3px solid var(--accent-primary) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+aside nav button.bg-\[\#ffffff05\] svg,
+aside nav a.bg-\[\#ffffff05\] svg {
+  color: var(--accent-secondary) !important;
+}
+
+/* Sidebar lower footer panel block */
+aside div.bg-\[\#0f0f0f\],
+aside div.border-t,
+aside footer {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  border-top: 1px solid var(--sidebar-border) !important;
+}
+
+/* ==========================================================================
+   STATUS INDICATORS, BADGES & NEON STATS
+   ========================================================================== */
+
+/* Present / Paid / Active badges */
+span[class*="bg-[#10b981]/10"],
+span[class*="bg-emerald-500/10"],
+span[class*="bg-green-500/10"],
+span[class*="text-emerald-400"] {
+  background-color: var(--badge-success-bg) !important;
+  color: var(--badge-success-text) !important;
+  border: 1px solid var(--badge-success-border) !important;
+  border-radius: 9999px !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  padding: 0.2rem 0.65rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+/* Late / Partial / Warning badges */
+span[class*="bg-amber-500/10"],
+span[class*="bg-yellow-500/10"],
+span[class*="text-amber-400"] {
+  background-color: var(--badge-warning-bg) !important;
+  color: var(--badge-warning-text) !important;
+  border: 1px solid var(--badge-warning-border) !important;
+  border-radius: 9999px !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  padding: 0.2rem 0.65rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+/* Absent / Unpaid / Danger badges */
+span[class*="bg-rose-500/10"],
+span[class*="bg-red-500/10"],
+span[class*="text-rose-400"] {
+  background-color: var(--badge-danger-bg) !important;
+  color: var(--badge-danger-text) !important;
+  border: 1px solid var(--badge-danger-border) !important;
+  border-radius: 9999px !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  padding: 0.2rem 0.65rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+/* Excused / General info badges */
+span[class*="bg-blue-500/10"],
+span[class*="bg-sky-500/10"],
+span[class*="text-blue-400"] {
+  background-color: var(--badge-info-bg) !important;
+  color: var(--badge-info-text) !important;
+  border: 1px solid var(--badge-info-border) !important;
+  border-radius: 9999px !important;
+  font-weight: 600 !important;
+  font-size: 0.75rem !important;
+  padding: 0.2rem 0.65rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+}
+
+/* ==========================================================================
+   MODALS, POPUPS & GLASS OVERLAYS
+   ========================================================================== */
+.fixed.inset-0.z-50.bg-black\/80 {
+  background-color: rgba(5, 7, 12, 0.8) !important; /* Rich obsidian filter blur */
+  backdrop-filter: blur(8px) !important;
+}
+
+/* Modal dialogue container */
+div.fixed.inset-0.z-50.bg-black\/80 > div {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-card) !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-dropdown) !important;
+}
+
+/* TOAST overlays */
+.fixed.top-4.right-4.z-50 > div {
+  background-color: var(--bg-card) !important;
+  border: 1.5px solid var(--border-card) !important;
+  border-radius: 10px !important;
+  box-shadow: var(--shadow-dropdown) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Glowing design features */
+div[class*="bg-[#7c3aed]"][class*="blur-"] {
+  background-color: var(--accent-primary) !important;
+  opacity: 0.15 !important;
+}
+
+/* Elegant serif playfair italic labels */
+.font-serif {
+  font-family: 'Playfair Display', Georgia, serif !important;
+  font-style: italic;
+  font-weight: 600;
+}

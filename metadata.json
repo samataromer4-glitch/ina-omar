@@ -1,0 +1,8 @@
+{
+  "name": "zamatar",
+  "description": "A comprehensive online management system for schools, featuring secure email/password auth, student tracking, attendance sheets, and financial invoice recording, powered by Supabase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
