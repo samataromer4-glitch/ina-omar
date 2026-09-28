@@ -16,6 +16,7 @@ import {
   verifyPassword, 
   legacySimpleHash 
 } from "./server/authSession";
+import { createRateLimiter } from "./server/securityRateLimiter";
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -982,7 +983,13 @@ app.get("/api/supabase-server-test", expressWithSupabase({ auth: "none" }, async
   }
 }));
 
-app.post("/api/auth/signup", async (req, res) => {
+const authRateLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 30,
+  message: "Isku dayo badan oo galid/diiwaangelin ah. Fadlan sug wax yar (Too many auth attempts. Please wait a moment)."
+});
+
+app.post("/api/auth/signup", authRateLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password || !email.includes("@")) {
     return res.status(400).json({ error: "Email sax ah iyo password fadlan geli." });
@@ -1062,7 +1069,7 @@ app.get("/api/documentation-pdf", (req, res) => {
   res.status(404).json({ error: "Documentation PDF lama helin." });
 });
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", authRateLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Fadlan geli email iyo password." });
   const cleanEmail = email.trim().toLowerCase();

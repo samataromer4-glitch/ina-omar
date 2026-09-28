@@ -247,34 +247,16 @@ The application is structured into two main operational pillars:
 
 ---
 
-## 11. Final Gap Analysis & Migration Checklist
+## 11. Final Gap Analysis & Production Status
 
-### What is Complete:
-- Complete frontend UI for all 29 modules.
-- End-to-end operational workflows (Invoicing, Receipt generation, Attendance check-in, Payroll calculation, P&L reporting).
-- Robust local database fallback (`database.json`) ensuring functional data persistence.
-- Zero TypeScript build or bundle errors.
-
-### What Requires Database Migration (Supabase Action):
-To move all features from local JSON / expected tables into permanent cloud PostgreSQL, the following SQL tables should be provisioned in Supabase:
-1. `dugsiga_teachers`
-2. `dugsiga_staff`
-3. `dugsiga_guardians`
-4. `dugsiga_staff_attendance`
-5. `dugsiga_timetable`
-6. `dugsiga_admissions`
-7. `dugsiga_announcements`
-8. `dugsiga_library_books`
-9. `dugsiga_library_loans`
-10. `dugsiga_inventory`
-11. `dugsiga_notifications`
-12. `dugsiga_fee_structures`
-13. `dugsiga_invoices`
-14. `dugsiga_payments`
-15. `dugsiga_expenses`
-16. `dugsiga_income`
-17. `dugsiga_budgets`
-18. `dugsiga_payroll`
+### Production Hardening & Migration Completed:
+- **Finance Module Migration to Supabase:** Fully implemented in `server/financeRoutes.ts` and `server/financeStore.ts`. All 7 core finance entities (`dugsiga_fee_structures`, `dugsiga_invoices`, `dugsiga_payments`, `dugsiga_expenses`, `dugsiga_income`, `dugsiga_budgets`, `dugsiga_payroll`) plus `dugsiga_discounts` and `dugsiga_refunds` persist directly in Supabase in production with resilient local development fallback.
+- **Tenant Isolation & Indexes:** All 29 tables in `DUGSI_PRO_2026_ALL_TABLES.sql` now enforce tenant isolation through `school_id` and have dedicated PostgreSQL indexes (`CREATE INDEX IF NOT EXISTS idx_<table_name>_school_id ON <table_name>(school_id)`).
+- **Authentication Security:** Removed tenant-impersonation auth bypass; passwords hashed using `crypto.scryptSync` with salt; authenticated Bearer tokens strictly required on all protected endpoints.
+- **Rate Limiting & Input Validation:** Implemented sliding-window rate limiters and financial positive-amount validators.
+- **Automated Test Suite:** Comprehensive test suite in `tests/finance.test.ts` (`npm test`) validating 16 integration scenarios.
+- **GitHub CI Pipeline:** Configured in `.github/workflows/ci.yml` running linting, build, and test verification.
+- **Zero Build or Lint Errors:** Verified with `tsc --noEmit` and production esbuild bundler.
 
 ---
-*Documentation compiled and verified directly against source code in `/server.ts`, `/server/modernRoutes.ts`, `/server/financeRoutes.ts`, and `/src/`.*
+*Documentation compiled and verified directly against source code in `/server.ts`, `/server/modernRoutes.ts`, `/server/financeRoutes.ts`, `/server/financeStore.ts`, and `/src/`.*

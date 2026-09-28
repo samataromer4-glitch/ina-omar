@@ -283,14 +283,48 @@ Faylka `.env` ama `.env.example` wuxuu xafidaa furayaasha muhiimka ah ee nidaamk
 ---
 
 ## 6. AMMAANKA IYO XAFAADINTA XOGTA (SECURITY ARCHITECTURE)
-1. **Multi-Tenant Data Isolation:** Dugsiyadu isma arki karaan xogtooda maxaa yeelay codsi kasta waxaa lagu shaandheeyaa `school_id` oo si toos ah looga soo dheegto kalfadhiga la xaqiijiyey (authenticated Bearer token).
-2. **Offline-First Resilient Architecture:** Haddii Supabase ama internetku go'o, nidaamku ma istaago; wuxuu si toos ah ugu wareegaa kaydka maxalliga ah (`database.json`), marka xiriirku soo noqdona wuxuu u diraa Supabase (`syncLocalToSupabase`).
-3. **Password Security:** Furayaasha sirta ah waxaa lagu kaydiyaa hab ammaan ah oo salted scrypt ah (`hashPassword`) oo ka difaacaya weerarrada brute force iyo rainbow tables.
-4. **Export & Backup:** Maamuluhu wuxuu si buuxda u soo degsan karaa dhammaan ardayda iyo biilasha isagoo sita Excel ama PDF markasta oo uu u baahdo kayd madax-bannaan.
+1. **Multi-Tenant Data Isolation:** Dugsiyadu isma arki karaan xogtooda maxaa yeelay codsi kasta waxaa lagu shaandheeyaa `school_id` oo si toos ah looga soo dheegto kalfadhiga la xaqiijiyey (authenticated Bearer token). Dhammaan miisaska (Tables 1–29) waxay leeyihiin `school_id` iyo index u gaar ah (`CREATE INDEX IF NOT EXISTS idx_<table_name>_school_id ON <table_name>(school_id)`).
+2. **Production Finance Architecture (Supabase Cloud PostgreSQL):**
+   Dhammaan xogta maaliyadda iyo xisaabaadka waxaa si toos ah loogu kaydiyaa miisaska rasmiga ah ee Supabase:
+   * `dugsiga_fee_structures`: Qaab-dhismeedka khidmadaha dugsiga
+   * `dugsiga_invoices`: Biilasha ardayda oo leh xisaabinta baaqiga iyo xaaladda
+   * `dugsiga_payments`: Rasiidhada lacag-qabashada oo leh ilaalinta laba-jibbaarista (duplicate protection)
+   * `dugsiga_expenses`: Kharashaadka dugsiga iyo nidaamka ogolaanshaha (Approval workflow)
+   * `dugsiga_income`: Dakhliga kale ee dugsiga soo gala
+   * `dugsiga_budgets`: Miisaaniyadda qorshaysan iyo cabbirka farqiga (Variance tracking)
+   * `dugsiga_payroll`: Mushahaarka macallimiinta iyo shaqaalaha oo si toos ah ugu xira kharashaadka (linked expense)
+   * `dugsiga_discounts`: Qiimo-dhimista sharciga ah oo toos u cusboonaysiisa baaqiga biilka
+   * `dugsiga_refunds`: Celinta lacagaha oo xaqiijisa inaan laga badin lacagtii la bixiyey
+3. **Resilient Local Fallback:** Haddii Supabase ama internetku go'o ama la joogo deegaanka maxalliga ah (offline), nidaamku wuxuu si hufan ugu wareegaa `database.seed.json` / `database.json`, isagoo ilaalinaya sii shaqaynta nidaamka.
+4. **Password Security:** Furayaasha sirta ah waxaa lagu kaydiyaa hab ammaan ah oo salted scrypt ah (`hashPassword`) oo ka difaacaya weerarrada brute force iyo rainbow tables.
+5. **Rate Limiting & Input Validation:** Nidaamku wuxuu leeyahay sliding-window rate limiters oo ka difaacaya weerarada automated brute-force `/api/auth/*` iyo `/api/payments`. Cadadka lacagta kasta waxaa lagu hubiyaa xaqiijinta (`validatePositiveAmount`).
 
 ---
 
-## 7. SIDA LOO KICIYO LOONA HIRGELIYO (INSTALLATION & DEPLOYMENT)
+## 7. AUTOMATED TESTS & CONTINUOUS INTEGRATION (CI)
+* **Automated Integration Test Suite (`npm test`):**
+  Wuxuu fuliyaa 16 tijaabo oo dhammeystiran oo tijaabiya:
+  1. Diidmada codsiyada aan fasaxnayn (401 Unauthorized)
+  2. Ka hortagga xatooyada aqoonsiga dugsiga (Tenant impersonation blocked)
+  3. Diiwaangelinta ammaan ah iyo dhalinta session token
+  4. Akhrista iyo qorista Fee Structures
+  5. Diiwaangelinta Ardayda iyo abuurista Biilasha (Invoices)
+  6. Qabashada lacag-bixinta (Payments) iyo cusboonaysiinta baaqiga
+  7. Ka hortagga laba-jibbaarista lacag-bixinta
+  8. Diiwaangelinta Qiimo-dhimista (Discounts)
+  9. Diiwaangelinta Kharashaadka (Expenses) iyo ansixintooda
+  10. Xisaabaadka guud ee maaliyadda (Finance Stats)
+  11. Lacag-celinta rasmiga ah (Refunds)
+  12. Warbixinta baaqiyada iyo gabowga deynta (Outstanding & Aging)
+  13. Xisaab-xirka ardayga (Student Financial Statement)
+  14. Qorsheynta miisaaniyadda (Budgets)
+  15. Mushahaarka shaqaalaha iyo xiriirinta kharashka (Payroll & Linked Expense)
+* **GitHub Actions CI Workflow (`.github/workflows/ci.yml`):**
+  Si toos ah ayuu u hubiyaa code-ka, typecheck/lint (`npm run lint`), build (`npm run build`), iyo test suite (`npm test`) mar kasta oo la sameeyo push ama pull request.
+
+---
+
+## 8. SIDA LOO KICIYO LOONA HIRGELIYO (INSTALLATION & DEPLOYMENT)
 
 ### 1. Soo Degsashada iyo Ku Rakibidda:
 ```bash

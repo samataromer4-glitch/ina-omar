@@ -1,5 +1,7 @@
 import type express from "express";
 import crypto from "crypto";
+import { createFinanceStore } from "./financeStore.js";
+import { createRateLimiter, validatePositiveAmount } from "./securityRateLimiter.js";
 
 interface FinanceRouteHelpers {
   getSchoolId: (req: express.Request) => string;
@@ -22,6 +24,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     handleSupabaseError
   } = helpers;
 
+  const store = createFinanceStore({ supabase, getUseLocalFallback, loadLocalDB, saveLocalDB });
+  const financeWriteLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 120,
+    message: "Codsiyo badan oo maaliyadeed. Fadlan wax yar sug (Rate limit exceeded)."
+  });
+
   // Helper: check user role for finance operations
   const checkFinanceAuth = (req: express.Request, requiredPermission: string): { authorized: boolean; role: string; schoolId: string } => {
     const schoolId = getSchoolId(req);
@@ -43,27 +52,10 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return { authorized, role, schoolId };
   };
 
-  // Helper: ensure DB arrays exist
-  const getEnsureDB = () => {
-    const db = loadLocalDB();
-    if (!db.feeStructures) db.feeStructures = [];
-    if (!db.invoices) db.invoices = [];
-    if (!db.payments) db.payments = [];
-    if (!db.expenses) db.expenses = [];
-    if (!db.income) db.income = [];
-    if (!db.budgets) db.budgets = [];
-    if (!db.payroll) db.payroll = [];
-    if (!db.fees) db.fees = [];
-    if (!db.discounts) db.discounts = [];
-    if (!db.refunds) db.refunds = [];
-    return db;
-  };
-
   // Helper: collision-proof invoice number generator
-  const generateUniqueInvoiceNumber = (db: any, year: string | number = new Date().getFullYear()): string => {
+  const generateUniqueInvoiceNumber = (existingInvoices: any[], year: string | number = new Date().getFullYear()): string => {
     let num: string;
     let attempts = 0;
-    const existingInvoices = db.invoices || [];
     do {
       const randomHex = crypto.randomBytes(3).toString("hex").toUpperCase();
       const timeSlice = Date.now().toString().slice(-4);
@@ -73,112 +65,35 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return num;
   };
 
-  // Helper: auto-bridge legacy fees into invoices & payments
-  const syncLegacyFeesToInvoices = (schoolId: string) => {
-    const db = getEnsureDB();
-    const schoolFees = (db.fees || []).filter((f: any) => f.schoolId === schoolId);
-    let changed = false;
-
-    for (const f of schoolFees) {
-      const invExists = (db.invoices || []).some((inv: any) => inv.id === f.id || inv.feeId === f.id);
-      if (!invExists) {
-        const student = (db.students || []).find((s: any) => s.id === f.studentId);
-        const feeAmount = Number(f.amount) || 50;
-        const paidAmount = Number(f.paidAmount || (f.status === 'paid' ? feeAmount : 0));
-        const balance = Math.max(0, feeAmount - paidAmount);
-        const status = balance === 0 ? 'Paid' : (paidAmount > 0 ? 'Partially Paid' : 'Unpaid');
-        const invNum = `INV-${f.year || '2026'}-${(f.month || 'SEP').substring(0, 3).toUpperCase()}-${f.id.substring(f.id.length - 4).toUpperCase()}`;
-
-        const newInv = {
-          id: f.id,
-          feeId: f.id,
-          schoolId,
-          invoiceNumber: invNum,
-          studentId: f.studentId,
-          studentName: student?.fullName || 'Arday Dugsiga',
-          className: student?.class || 'Fasalka 1aad',
-          guardianName: student?.guardianName || 'Waalidka',
-          guardianPhone: student?.guardianPhone || '',
-          items: [
-            {
-              id: 'item-' + f.id,
-              name: `Lacagta Bishan (${f.month} ${f.year})`,
-              category: 'Monthly Tuition',
-              amount: feeAmount
-            }
-          ],
-          subtotal: feeAmount,
-          discount: 0,
-          total: feeAmount,
-          paidAmount,
-          balance,
-          issueDate: f.createdAt ? f.createdAt.split('T')[0] : '2026-09-01',
-          dueDate: `${f.year || '2026'}-09-28`,
-          status,
-          notes: 'Auto-bridged from existing school fees',
-          createdAt: f.createdAt || new Date().toISOString()
-        };
-
-        db.invoices.push(newInv);
-        changed = true;
-
-        // If paid amount > 0, log a corresponding payment transaction if not exists
-        if (paidAmount > 0) {
-          const payExists = (db.payments || []).some((p: any) => p.invoiceId === f.id);
-          if (!payExists) {
-            db.payments.push({
-              id: 'pay-' + f.id,
-              receiptNumber: `REC-${f.year || '2026'}-${f.id.substring(f.id.length - 4).toUpperCase()}`,
-              schoolId,
-              invoiceId: f.id,
-              invoiceNumber: invNum,
-              studentId: f.studentId,
-              studentName: student?.fullName || 'Arday Dugsiga',
-              className: student?.class || 'Fasalka 1aad',
-              amount: paidAmount,
-              paymentDate: f.createdAt ? f.createdAt.split('T')[0] : '2026-09-16',
-              paymentMethod: 'Cash',
-              reference: 'LEGACY-PAY-' + f.id.substring(f.id.length - 4),
-              receivedBy: 'Xisaabiyaha Dugsiga',
-              notes: 'Initial fee payment',
-              createdAt: f.createdAt || new Date().toISOString()
-            });
-          }
-        }
-      }
-    }
-
-    if (changed) {
-      saveLocalDB(db);
-    }
-  };
-
   /* =========================================================================
      1. FEE STRUCTURES (CRUD)
      ========================================================================= */
   app.get("/api/fee-structures", async (req, res) => {
     const schoolId = getSchoolId(req);
-    const db = getEnsureDB();
-    const list = (db.feeStructures || []).filter((fs: any) => fs.schoolId === schoolId);
+    const list = await store.getFeeStructures(schoolId);
     return res.json(list);
   });
 
-  app.post("/api/fee-structures", async (req, res) => {
+  app.post("/api/fee-structures", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid qaabeynta khidmadaha (Forbidden)" });
 
     const body = req.body;
-    if (!body.name || !body.amount) {
-      return res.status(400).json({ error: "Magaca iyo cadadka khidmadda waa khasab" });
+    if (!body.name || !body.name.trim()) {
+      return res.status(400).json({ error: "Magaca khidmadda waa khasab (Fee name is required)" });
     }
 
-    const db = getEnsureDB();
+    const amtCheck = validatePositiveAmount(body.amount);
+    if (!amtCheck.valid) {
+      return res.status(400).json({ error: amtCheck.error });
+    }
+
     const newStructure = {
       id: body.id || 'fs-' + Math.random().toString(36).substring(2, 11),
       schoolId,
       name: body.name.trim(),
       category: body.category || 'Monthly Tuition',
-      amount: Number(body.amount) || 0,
+      amount: amtCheck.value,
       className: body.className || 'All Classes',
       academicYear: body.academicYear || '2026-2027',
       term: body.term || 'All Terms',
@@ -186,23 +101,27 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    db.feeStructures.push(newStructure);
-    saveLocalDB(db);
+    await store.saveFeeStructure(newStructure);
     return res.status(201).json(newStructure);
   });
 
-  app.put("/api/fee-structures/:id", async (req, res) => {
+  app.put("/api/fee-structures/:id", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid wax ka beddelka (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.feeStructures || []).findIndex((fs: any) => fs.id === id && fs.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Fee structure not found" });
+    const existing = (await store.getFeeStructures(schoolId)).find((fs: any) => fs.id === id);
+    if (!existing) return res.status(404).json({ error: "Fee structure not found" });
 
-    db.feeStructures[idx] = { ...db.feeStructures[idx], ...req.body };
-    saveLocalDB(db);
-    return res.json(db.feeStructures[idx]);
+    const updated = { ...existing, ...req.body, id, schoolId };
+    if (req.body.amount !== undefined) {
+      const amtCheck = validatePositiveAmount(req.body.amount);
+      if (!amtCheck.valid) return res.status(400).json({ error: amtCheck.error });
+      updated.amount = amtCheck.value;
+    }
+
+    await store.saveFeeStructure(updated);
+    return res.json(updated);
   });
 
   app.delete("/api/fee-structures/:id", async (req, res) => {
@@ -210,9 +129,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid tirtirista (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    db.feeStructures = (db.feeStructures || []).filter((fs: any) => !(fs.id === id && fs.schoolId === schoolId));
-    saveLocalDB(db);
+    await store.deleteFeeStructure(id, schoolId);
     return res.json({ success: true });
   });
 
@@ -221,10 +138,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
      ========================================================================= */
   app.get("/api/invoices", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
-
-    const db = getEnsureDB();
-    let invoices = (db.invoices || []).filter((inv: any) => inv.schoolId === schoolId);
+    let invoices = await store.getInvoices(schoolId);
 
     const { status, class: className, studentId, search } = req.query;
     if (status && status !== 'All') {
@@ -248,19 +162,20 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return res.json(invoices);
   });
 
-  app.post("/api/invoices", async (req, res) => {
+  app.post("/api/invoices", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid abuurista biilasha (Forbidden)" });
 
     const body = req.body;
     if (!body.studentId) return res.status(400).json({ error: "Ardaygu waa khasab (Student is required)" });
 
-    const db = getEnsureDB();
-    const student = (db.students || []).find((s: any) => s.id === body.studentId && s.schoolId === schoolId);
+    const students = await store.getStudents(schoolId);
+    const student = students.find((s: any) => s.id === body.studentId);
     if (!student) return res.status(404).json({ error: "Ardayga lama helin (Student not found)" });
 
+    const existingInvoices = await store.getInvoices(schoolId);
     const invoiceId = body.id || 'inv-' + Math.random().toString(36).substring(2, 11);
-    const invoiceNumber = body.invoiceNumber || generateUniqueInvoiceNumber(db, new Date().getFullYear());
+    const invoiceNumber = body.invoiceNumber || generateUniqueInvoiceNumber(existingInvoices, new Date().getFullYear());
     const items = Array.isArray(body.items) && body.items.length > 0 
       ? body.items 
       : [{ id: 'item-1', name: body.title || 'Waxbarasho / Tuition', category: body.category || 'Monthly Tuition', amount: Number(body.amount) || 50 }];
@@ -294,28 +209,12 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    db.invoices.unshift(newInvoice);
-
-    // Sync to db.fees for 100% backward compatibility
-    const feeExists = (db.fees || []).find((f: any) => f.id === invoiceId);
-    if (!feeExists) {
-      db.fees.push({
-        id: invoiceId,
-        studentId: student.id,
-        month: new Date().toLocaleString('default', { month: 'long' }),
-        year: new Date().getFullYear(),
-        amount: total,
-        paidAmount,
-        status: status.toLowerCase(),
-        schoolId,
-        createdAt: newInvoice.createdAt
-      });
-    }
+    await store.saveInvoice(newInvoice);
 
     // If initial payment was made with invoice creation, record payment transaction
     if (paidAmount > 0) {
       const receiptNumber = `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-      db.payments.unshift({
+      await store.savePayment({
         id: 'pay-' + Math.random().toString(36).substring(2, 11),
         receiptNumber,
         schoolId,
@@ -328,25 +227,24 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
         paymentDate: newInvoice.issueDate,
         paymentMethod: body.paymentMethod || 'Cash',
         reference: body.paymentReference || 'INITIAL-PAY',
+        remainingBalance: balance,
         receivedBy: 'Admin',
         notes: 'Initial payment upon invoice creation',
         createdAt: new Date().toISOString()
       });
     }
 
-    saveLocalDB(db);
     return res.status(201).json(newInvoice);
   });
 
   // Bulk Invoice Generation
-  app.post("/api/invoices/bulk", async (req, res) => {
+  app.post("/api/invoices/bulk", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid biilasha wadajirka ah (Forbidden)" });
 
     const { targetClass, feeStructureIds, month, year, dueDate, customAmount } = req.body;
-    const db = getEnsureDB();
-
-    let targetStudents = (db.students || []).filter((s: any) => s.schoolId === schoolId && s.status === 'active');
+    const students = await store.getStudents(schoolId);
+    let targetStudents = students.filter((s: any) => s.status === 'active');
     if (targetClass && targetClass !== 'All') {
       targetStudents = targetStudents.filter((s: any) => s.class === targetClass);
     }
@@ -355,10 +253,8 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       return res.status(400).json({ error: "Arday firfircoon lagama helin fasalkan (No active students found)" });
     }
 
-    // Resolve fee items
-    const selectedStructures = (db.feeStructures || []).filter((fs: any) => 
-      fs.schoolId === schoolId && (feeStructureIds || []).includes(fs.id)
-    );
+    const feeStructures = await store.getFeeStructures(schoolId);
+    const selectedStructures = feeStructures.filter((fs: any) => (feeStructureIds || []).includes(fs.id));
 
     let defaultItems = selectedStructures.map((fs: any) => ({
       id: fs.id,
@@ -378,21 +274,20 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     }
 
     const subtotal = defaultItems.reduce((sum: number, it: any) => sum + it.amount, 0);
+    const existingInvoices = await store.getInvoices(schoolId);
     const createdInvoices: any[] = [];
     const issueDate = new Date().toISOString().split('T')[0];
     const resolvedDueDate = dueDate || new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
 
     for (const student of targetStudents) {
-      // Check if student already has invoice for this month/year if monthly tuition
-      const alreadyHasMonthly = (db.invoices || []).some((inv: any) => 
+      const alreadyHasMonthly = existingInvoices.some((inv: any) => 
         inv.studentId === student.id && 
-        inv.schoolId === schoolId &&
         inv.notes?.includes(`${month} ${year}`)
       );
       if (alreadyHasMonthly) continue;
 
       const invoiceId = 'inv-' + Math.random().toString(36).substring(2, 11);
-      const invoiceNumber = generateUniqueInvoiceNumber(db, year || 2026);
+      const invoiceNumber = generateUniqueInvoiceNumber([...existingInvoices, ...createdInvoices], year || 2026);
 
       const newInv = {
         id: invoiceId,
@@ -416,24 +311,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
         createdAt: new Date().toISOString()
       };
 
-      db.invoices.push(newInv);
       createdInvoices.push(newInv);
-
-      // Also mirror to db.fees
-      db.fees.push({
-        id: invoiceId,
-        studentId: student.id,
-        month: month || 'September',
-        year: Number(year) || 2026,
-        amount: subtotal,
-        paidAmount: 0,
-        status: 'unpaid',
-        schoolId,
-        createdAt: newInv.createdAt
-      });
     }
 
-    saveLocalDB(db);
+    if (createdInvoices.length > 0) {
+      await store.saveInvoicesBulk(createdInvoices);
+    }
+
     return res.json({ 
       success: true, 
       count: createdInvoices.length, 
@@ -441,18 +325,16 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     });
   });
 
-  app.put("/api/invoices/:id", async (req, res) => {
+  app.put("/api/invoices/:id", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid wax ka beddelka (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.invoices || []).findIndex((inv: any) => inv.id === id && inv.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Invoice not found" });
+    const invoices = await store.getInvoices(schoolId);
+    const current = invoices.find((inv: any) => inv.id === id);
+    if (!current) return res.status(404).json({ error: "Invoice not found" });
 
-    const current = db.invoices[idx];
     const updates = req.body;
-
     const discount = updates.discount !== undefined ? Number(updates.discount) : current.discount;
     const items = updates.items || current.items;
     const subtotal = items.reduce((sum: number, it: any) => sum + (Number(it.amount) || 0), 0);
@@ -461,7 +343,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     const balance = Math.max(0, total - paidAmount);
     const status = updates.status || (balance === 0 ? 'Paid' : (paidAmount > 0 ? 'Partially Paid' : 'Unpaid'));
 
-    db.invoices[idx] = {
+    const updated = {
       ...current,
       ...updates,
       items,
@@ -474,19 +356,8 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       updatedAt: new Date().toISOString()
     };
 
-    // Mirror to db.fees
-    const feeIdx = (db.fees || []).findIndex((f: any) => f.id === id);
-    if (feeIdx > -1) {
-      db.fees[feeIdx] = {
-        ...db.fees[feeIdx],
-        amount: total,
-        paidAmount,
-        status: status.toLowerCase()
-      };
-    }
-
-    saveLocalDB(db);
-    return res.json(db.invoices[idx]);
+    await store.saveInvoice(updated);
+    return res.json(updated);
   });
 
   app.delete("/api/invoices/:id", async (req, res) => {
@@ -494,57 +365,48 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid tirtirista (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    db.invoices = (db.invoices || []).filter((inv: any) => !(inv.id === id && inv.schoolId === schoolId));
-    db.fees = (db.fees || []).filter((f: any) => !(f.id === id && f.schoolId === schoolId));
-    saveLocalDB(db);
+    await store.deleteInvoice(id, schoolId);
     return res.json({ success: true });
   });
 
   /* =========================================================================
-     3. PAYMENTS & RECEIPTS (Full/Partial, Non-duplicate Revenue, WhatsApp)
+     3. PAYMENTS & RECEIPTS
      ========================================================================= */
   app.get("/api/payments", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
-
-    const db = getEnsureDB();
-    const payments = (db.payments || []).filter((p: any) => p.schoolId === schoolId);
-    payments.sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+    const payments = await store.getPayments(schoolId);
     return res.json(payments);
   });
 
-  app.post("/api/payments", async (req, res) => {
+  app.post("/api/payments", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid qabashada lacagta (Forbidden)" });
 
     const body = req.body;
     const { invoiceId, amount, paymentMethod, reference, receivedBy, notes } = body;
 
-    const payAmount = Math.round(Number(amount) * 100) / 100;
-    if (isNaN(payAmount) || payAmount <= 0) {
-      return res.status(400).json({ error: "Fadlan geli cadad lacageed oo sax ah (Valid positive amount required)" });
+    const amtCheck = validatePositiveAmount(amount);
+    if (!amtCheck.valid) {
+      return res.status(400).json({ error: amtCheck.error });
     }
+    const payAmount = amtCheck.value;
 
-    const db = getEnsureDB();
-    const invoiceIdx = (db.invoices || []).findIndex((inv: any) => inv.id === invoiceId && inv.schoolId === schoolId);
-    if (invoiceIdx === -1) {
+    const invoices = await store.getInvoices(schoolId);
+    const inv = invoices.find((i: any) => i.id === invoiceId);
+    if (!inv) {
       return res.status(404).json({ error: "Biilka lama helin (Invoice not found)" });
     }
 
-    const inv = db.invoices[invoiceIdx];
-
-    // Prevent overpayment beyond remaining balance
     if (payAmount > (inv.balance + 0.001)) {
       return res.status(400).json({ 
         error: `Cadadka la bixinayo ($${payAmount}) kama badnaan karo baaqiga haray ee biilka ($${inv.balance})` 
       });
     }
 
-    // Duplicate submission protection within 30 seconds for exact same invoice & amount
+    // Duplicate submission protection within 30 seconds
+    const existingPayments = await store.getPayments(schoolId);
     const duplicateTimeWindow = 30 * 1000;
-    const isRecentDuplicate = (db.payments || []).some((p: any) => 
-      p.schoolId === schoolId &&
+    const isRecentDuplicate = existingPayments.some((p: any) => 
       p.invoiceId === invoiceId &&
       Math.abs(p.amount - payAmount) < 0.001 &&
       (Date.now() - new Date(p.createdAt || 0).getTime()) < duplicateTimeWindow
@@ -559,23 +421,15 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     const newBalance = Math.max(0, Math.round((inv.total - newPaidAmount) * 100) / 100);
     const newStatus = newBalance === 0 ? 'Paid' : 'Partially Paid';
 
-    // Update invoice atomically
-    db.invoices[invoiceIdx] = {
+    const updatedInvoice = {
       ...inv,
       paidAmount: newPaidAmount,
       balance: newBalance,
       status: newStatus,
       updatedAt: new Date().toISOString()
     };
+    await store.saveInvoice(updatedInvoice);
 
-    // Mirror to db.fees
-    const feeIdx = (db.fees || []).findIndex((f: any) => f.id === invoiceId);
-    if (feeIdx > -1) {
-      db.fees[feeIdx].paidAmount = newPaidAmount;
-      db.fees[feeIdx].status = newStatus.toLowerCase();
-    }
-
-    // Create Payment Transaction Record
     const receiptNumber = `REC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newPayment = {
       id: 'pay-' + Math.random().toString(36).substring(2, 11),
@@ -590,28 +444,27 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       paymentDate: body.paymentDate || new Date().toISOString().split('T')[0],
       paymentMethod: paymentMethod || 'Cash',
       reference: reference || 'TXN-' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+      remainingBalance: newBalance,
       receivedBy: receivedBy || 'Xisaabiyaha',
       notes: notes || '',
       createdAt: new Date().toISOString()
     };
 
-    db.payments.unshift(newPayment);
-    saveLocalDB(db);
+    await store.savePayment(newPayment);
 
     return res.status(201).json({
       success: true,
       payment: newPayment,
-      invoice: db.invoices[invoiceIdx]
+      invoice: updatedInvoice
     });
   });
 
   /* =========================================================================
-     4. EXPENSES MODULE (CRUD, Categories, Status, PDF/Excel)
+     4. EXPENSES MODULE
      ========================================================================= */
   app.get("/api/expenses", async (req, res) => {
     const schoolId = getSchoolId(req);
-    const db = getEnsureDB();
-    let expenses = (db.expenses || []).filter((e: any) => e.schoolId === schoolId);
+    let expenses = await store.getExpenses(schoolId);
 
     const { category, status, paymentMethod, from, to, search } = req.query;
     if (category && category !== 'All') {
@@ -638,11 +491,10 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       );
     }
 
-    expenses.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     return res.json(expenses);
   });
 
-  app.post("/api/expenses", async (req, res) => {
+  app.post("/api/expenses", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid diiwaangelinta kharashka (Forbidden)" });
 
@@ -651,14 +503,16 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       return res.status(400).json({ error: "Category, description, and amount are required" });
     }
 
-    const db = getEnsureDB();
+    const amtCheck = validatePositiveAmount(body.amount);
+    if (!amtCheck.valid) return res.status(400).json({ error: amtCheck.error });
+
     const newExpense = {
       id: body.id || 'exp-' + Math.random().toString(36).substring(2, 11),
       schoolId,
       expenseId: `EXP-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       category: body.category,
       description: body.description.trim(),
-      amount: Number(body.amount) || 0,
+      amount: amtCheck.value,
       date: body.date || new Date().toISOString().split('T')[0],
       paymentMethod: body.paymentMethod || 'Cash',
       vendorPayee: body.vendorPayee || 'General Payee',
@@ -670,29 +524,30 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    db.expenses.unshift(newExpense);
-    saveLocalDB(db);
+    await store.saveExpense(newExpense);
     return res.status(201).json(newExpense);
   });
 
-  app.put("/api/expenses/:id", async (req, res) => {
+  app.put("/api/expenses/:id", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid wax ka beddelka kharashka (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.expenses || []).findIndex((e: any) => e.id === id && e.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Expense not found" });
+    const expenses = await store.getExpenses(schoolId);
+    const existing = expenses.find((e: any) => e.id === id);
+    if (!existing) return res.status(404).json({ error: "Expense not found" });
 
-    db.expenses[idx] = {
-      ...db.expenses[idx],
+    const updated = {
+      ...existing,
       ...req.body,
-      amount: req.body.amount !== undefined ? Number(req.body.amount) : db.expenses[idx].amount,
+      id,
+      schoolId,
+      amount: req.body.amount !== undefined ? Number(req.body.amount) : existing.amount,
       updatedAt: new Date().toISOString()
     };
 
-    saveLocalDB(db);
-    return res.json(db.expenses[idx]);
+    await store.saveExpense(updated);
+    return res.json(updated);
   });
 
   app.put("/api/expenses/:id/approve", async (req, res) => {
@@ -700,14 +555,18 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid oggolaanshaha kharashka (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.expenses || []).findIndex((e: any) => e.id === id && e.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Expense not found" });
+    const expenses = await store.getExpenses(schoolId);
+    const existing = expenses.find((e: any) => e.id === id);
+    if (!existing) return res.status(404).json({ error: "Expense not found" });
 
-    db.expenses[idx].status = 'Approved';
-    db.expenses[idx].updatedAt = new Date().toISOString();
-    saveLocalDB(db);
-    return res.json(db.expenses[idx]);
+    const updated = {
+      ...existing,
+      status: 'Approved',
+      updatedAt: new Date().toISOString()
+    };
+
+    await store.saveExpense(updated);
+    return res.json(updated);
   });
 
   app.delete("/api/expenses/:id", async (req, res) => {
@@ -715,24 +574,19 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid tirtirista kharashka (Forbidden)" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    db.expenses = (db.expenses || []).filter((e: any) => !(e.id === id && e.schoolId === schoolId));
-    saveLocalDB(db);
+    await store.deleteExpense(id, schoolId);
     return res.json({ success: true });
   });
 
   /* =========================================================================
-     5. INCOME / REVENUE MODULE (Centralized, No-Duplicate Tracking)
+     5. INCOME MODULE
      ========================================================================= */
   app.get("/api/income", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
+    const standaloneIncome = await store.getIncome(schoolId);
+    const payments = await store.getPayments(schoolId);
 
-    const db = getEnsureDB();
-    const standaloneIncome = (db.income || []).filter((inc: any) => inc.schoolId === schoolId);
-
-    // Formatted student payment revenue stream
-    const feeIncome = (db.payments || []).filter((p: any) => p.schoolId === schoolId).map((p: any) => ({
+    const feeIncome = payments.map((p: any) => ({
       id: p.id,
       incomeId: p.receiptNumber,
       category: 'Student Fees',
@@ -753,7 +607,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return res.json(combined);
   });
 
-  app.post("/api/income", async (req, res) => {
+  app.post("/api/income", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid diiwaangelinta dakhliga (Forbidden)" });
 
@@ -762,14 +616,16 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       return res.status(400).json({ error: "Category, description, and amount are required" });
     }
 
-    const db = getEnsureDB();
+    const amtCheck = validatePositiveAmount(body.amount);
+    if (!amtCheck.valid) return res.status(400).json({ error: amtCheck.error });
+
     const newIncome = {
       id: body.id || 'inc-' + Math.random().toString(36).substring(2, 11),
       schoolId,
       incomeId: `INC-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
       category: body.category,
       description: body.description.trim(),
-      amount: Number(body.amount) || 0,
+      amount: amtCheck.value,
       date: body.date || new Date().toISOString().split('T')[0],
       paymentMethod: body.paymentMethod || 'Cash',
       reference: body.reference || '',
@@ -779,28 +635,29 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    db.income.unshift(newIncome);
-    saveLocalDB(db);
+    await store.saveIncome(newIncome);
     return res.status(201).json(newIncome);
   });
 
-  app.put("/api/income/:id", async (req, res) => {
+  app.put("/api/income/:id", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.income || []).findIndex((inc: any) => inc.id === id && inc.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Income record not found" });
+    const incomeList = await store.getIncome(schoolId);
+    const existing = incomeList.find((inc: any) => inc.id === id);
+    if (!existing) return res.status(404).json({ error: "Income record not found" });
 
-    db.income[idx] = {
-      ...db.income[idx],
+    const updated = {
+      ...existing,
       ...req.body,
-      amount: req.body.amount !== undefined ? Number(req.body.amount) : db.income[idx].amount
+      id,
+      schoolId,
+      amount: req.body.amount !== undefined ? Number(req.body.amount) : existing.amount
     };
 
-    saveLocalDB(db);
-    return res.json(db.income[idx]);
+    await store.saveIncome(updated);
+    return res.json(updated);
   });
 
   app.delete("/api/income/:id", async (req, res) => {
@@ -808,24 +665,20 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    db.income = (db.income || []).filter((inc: any) => !(inc.id === id && inc.schoolId === schoolId));
-    saveLocalDB(db);
+    await store.deleteIncome(id, schoolId);
     return res.json({ success: true });
   });
 
   /* =========================================================================
-     6. PAYROLL (Staff & Teachers, Gross & Net, Automatic Expense Integration)
+     6. PAYROLL MODULE
      ========================================================================= */
   app.get("/api/payroll", async (req, res) => {
     const schoolId = getSchoolId(req);
-    const db = getEnsureDB();
-    const list = (db.payroll || []).filter((pr: any) => pr.schoolId === schoolId);
-    list.sort((a: any, b: any) => new Date(b.paymentDate).getTime() - new Date(a.paymentDate).getTime());
+    const list = await store.getPayroll(schoolId);
     return res.json(list);
   });
 
-  app.post("/api/payroll", async (req, res) => {
+  app.post("/api/payroll", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid maaraynta mushahaarka (Forbidden)" });
 
@@ -840,7 +693,6 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     const grossSalary = basicSalary + allowances;
     const netSalary = Math.max(0, grossSalary - deductions);
 
-    const db = getEnsureDB();
     const newPayroll = {
       id: body.id || 'pr-' + Math.random().toString(36).substring(2, 11),
       schoolId,
@@ -863,13 +715,12 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    // If created with status 'Paid', auto-link expense record
     if (newPayroll.status === 'Paid') {
       const expId = 'exp-pr-' + newPayroll.id;
       newPayroll.expenseId = expId;
       newPayroll.paidAt = new Date().toISOString();
 
-      db.expenses.push({
+      await store.saveExpense({
         id: expId,
         schoolId,
         expenseId: `EXP-SAL-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -888,21 +739,19 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       });
     }
 
-    db.payroll.unshift(newPayroll);
-    saveLocalDB(db);
+    await store.savePayroll(newPayroll);
     return res.status(201).json(newPayroll);
   });
 
-  app.put("/api/payroll/:id", async (req, res) => {
+  app.put("/api/payroll/:id", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.payroll || []).findIndex((pr: any) => pr.id === id && pr.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Payroll record not found" });
+    const payrollList = await store.getPayroll(schoolId);
+    const current = payrollList.find((pr: any) => pr.id === id);
+    if (!current) return res.status(404).json({ error: "Payroll record not found" });
 
-    const current = db.payroll[idx];
     const updates = req.body;
     const basicSalary = updates.basicSalary !== undefined ? Number(updates.basicSalary) : current.basicSalary;
     const allowances = updates.allowances !== undefined ? Number(updates.allowances) : current.allowances;
@@ -910,9 +759,11 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     const grossSalary = basicSalary + allowances;
     const netSalary = Math.max(0, grossSalary - deductions);
 
-    db.payroll[idx] = {
+    const updated = {
       ...current,
       ...updates,
+      id,
+      schoolId,
       basicSalary,
       allowances,
       deductions,
@@ -921,30 +772,28 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       updatedAt: new Date().toISOString()
     };
 
-    saveLocalDB(db);
-    return res.json(db.payroll[idx]);
+    await store.savePayroll(updated);
+    return res.json(updated);
   });
 
-  // Mark Payroll as Paid
   app.put("/api/payroll/:id/pay", async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.payroll || []).findIndex((pr: any) => pr.id === id && pr.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Payroll record not found" });
+    const payrollList = await store.getPayroll(schoolId);
+    const pr = payrollList.find((p: any) => p.id === id);
+    if (!pr) return res.status(404).json({ error: "Payroll record not found" });
 
-    const pr = db.payroll[idx];
-    pr.status = 'Paid';
-    pr.paidAt = new Date().toISOString();
-
-    // Auto-create or update linked expense record without double-counting
     const expId = pr.expenseId || ('exp-pr-' + pr.id);
-    pr.expenseId = expId;
+    const updatedPr = {
+      ...pr,
+      status: 'Paid',
+      paidAt: new Date().toISOString(),
+      expenseId: expId
+    };
 
-    const existingExpIdx = (db.expenses || []).findIndex((e: any) => e.payrollId === pr.id || e.id === expId);
-    const expRecord = {
+    await store.saveExpense({
       id: expId,
       schoolId,
       expenseId: `EXP-SAL-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -960,16 +809,10 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       status: 'Paid',
       payrollId: pr.id,
       createdAt: new Date().toISOString()
-    };
+    });
 
-    if (existingExpIdx > -1) {
-      db.expenses[existingExpIdx] = { ...db.expenses[existingExpIdx], ...expRecord };
-    } else {
-      db.expenses.unshift(expRecord);
-    }
-
-    saveLocalDB(db);
-    return res.json({ success: true, payroll: pr });
+    await store.savePayroll(updatedPr);
+    return res.json({ success: true, payroll: updatedPr });
   });
 
   app.delete("/api/payroll/:id", async (req, res) => {
@@ -977,42 +820,31 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const pr = (db.payroll || []).find((p: any) => p.id === id && p.schoolId === schoolId);
-    if (pr?.expenseId) {
-      db.expenses = (db.expenses || []).filter((e: any) => e.id !== pr.expenseId && e.payrollId !== id);
-    }
-    db.payroll = (db.payroll || []).filter((p: any) => !(p.id === id && p.schoolId === schoolId));
-    saveLocalDB(db);
+    await store.deletePayroll(id, schoolId);
     return res.json({ success: true });
   });
 
   /* =========================================================================
-     7. BUDGETS (Budget vs Actual, Planned vs Remaining)
+     7. BUDGETS MODULE
      ========================================================================= */
   app.get("/api/budgets", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
+    const budgets = await store.getBudgets(schoolId);
+    const expenses = (await store.getExpenses(schoolId)).filter((e: any) => e.status === 'Paid');
+    const income = await store.getIncome(schoolId);
+    const payments = await store.getPayments(schoolId);
 
-    const db = getEnsureDB();
-    const budgets = (db.budgets || []).filter((b: any) => b.schoolId === schoolId);
-
-    const allExpenses = (db.expenses || []).filter((e: any) => e.schoolId === schoolId && e.status === 'Paid');
-    const allIncome = (db.income || []).filter((inc: any) => inc.schoolId === schoolId);
-    const allPayments = (db.payments || []).filter((p: any) => p.schoolId === schoolId);
-
-    // Compute live actual amounts
     const enrichedBudgets = budgets.map((b: any) => {
       let actual = 0;
       if (b.type === 'Expense') {
-        actual = allExpenses
+        actual = expenses
           .filter((e: any) => b.category === 'All' || e.category === b.category)
           .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
       } else {
         if (b.category === 'Student Fees') {
-          actual = allPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+          actual = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
         } else {
-          actual = allIncome
+          actual = income
             .filter((inc: any) => b.category === 'All' || inc.category === b.category)
             .reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0);
         }
@@ -1033,7 +865,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return res.json(enrichedBudgets);
   });
 
-  app.post("/api/budgets", async (req, res) => {
+  app.post("/api/budgets", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
@@ -1042,7 +874,9 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       return res.status(400).json({ error: "Category and plannedAmount required" });
     }
 
-    const db = getEnsureDB();
+    const amtCheck = validatePositiveAmount(body.plannedAmount);
+    if (!amtCheck.valid) return res.status(400).json({ error: amtCheck.error });
+
     const newBudget = {
       id: body.id || 'bg-' + Math.random().toString(36).substring(2, 11),
       schoolId,
@@ -1050,36 +884,37 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       period: body.period || 'Annual',
       category: body.category,
       type: body.type || 'Expense',
-      plannedAmount: Number(body.plannedAmount) || 0,
+      plannedAmount: amtCheck.value,
       actualAmount: 0,
-      remainingAmount: Number(body.plannedAmount) || 0,
+      remainingAmount: amtCheck.value,
       variance: 0,
       notes: body.notes || '',
       createdAt: new Date().toISOString()
     };
 
-    db.budgets.push(newBudget);
-    saveLocalDB(db);
+    await store.saveBudget(newBudget);
     return res.status(201).json(newBudget);
   });
 
-  app.put("/api/budgets/:id", async (req, res) => {
+  app.put("/api/budgets/:id", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const idx = (db.budgets || []).findIndex((b: any) => b.id === id && b.schoolId === schoolId);
-    if (idx === -1) return res.status(404).json({ error: "Budget not found" });
+    const budgets = await store.getBudgets(schoolId);
+    const existing = budgets.find((b: any) => b.id === id);
+    if (!existing) return res.status(404).json({ error: "Budget not found" });
 
-    db.budgets[idx] = {
-      ...db.budgets[idx],
+    const updated = {
+      ...existing,
       ...req.body,
-      plannedAmount: req.body.plannedAmount !== undefined ? Number(req.body.plannedAmount) : db.budgets[idx].plannedAmount
+      id,
+      schoolId,
+      plannedAmount: req.body.plannedAmount !== undefined ? Number(req.body.plannedAmount) : existing.plannedAmount
     };
 
-    saveLocalDB(db);
-    return res.json(db.budgets[idx]);
+    await store.saveBudget(updated);
+    return res.json(updated);
   });
 
   app.delete("/api/budgets/:id", async (req, res) => {
@@ -1087,20 +922,15 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    db.budgets = (db.budgets || []).filter((b: any) => !(b.id === id && b.schoolId === schoolId));
-    saveLocalDB(db);
+    await store.deleteBudget(id, schoolId);
     return res.json({ success: true });
   });
 
   /* =========================================================================
-     8. PROFIT & LOSS REPORTING (Revenue - Expenses = Net Profit/Loss)
+     8. PROFIT & LOSS REPORTING
      ========================================================================= */
   app.get("/api/profit-loss", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
-
-    const db = getEnsureDB();
     const { period, from, to } = req.query;
 
     let startDate = from ? new Date(from as string) : new Date(new Date().getFullYear(), 0, 1);
@@ -1121,15 +951,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     const startStr = startDate.toISOString().split('T')[0];
     const endStr = endDate.toISOString().split('T')[0];
 
-    // Filter authoritative payment revenues
-    const payments = (db.payments || []).filter((p: any) => 
-      p.schoolId === schoolId && p.paymentDate >= startStr && p.paymentDate <= endStr
-    );
-    const standaloneIncome = (db.income || []).filter((inc: any) => 
-      inc.schoolId === schoolId && inc.date >= startStr && inc.date <= endStr
-    );
+    const allPayments = await store.getPayments(schoolId);
+    const allIncome = await store.getIncome(schoolId);
+    const allExpenses = await store.getExpenses(schoolId);
 
-    // Revenue by category
+    const payments = allPayments.filter((p: any) => p.paymentDate >= startStr && p.paymentDate <= endStr);
+    const standaloneIncome = allIncome.filter((inc: any) => inc.date >= startStr && inc.date <= endStr);
+
     const revenueByCategory: Record<string, number> = {};
     let totalRevenue = 0;
 
@@ -1145,9 +973,8 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       revenueByCategory[inc.category] = (revenueByCategory[inc.category] || 0) + amt;
     });
 
-    // Filter paid expenses (includes payroll salaries without duplicate counting)
-    const expenses = (db.expenses || []).filter((e: any) => 
-      e.schoolId === schoolId && e.status === 'Paid' && e.date >= startStr && e.date <= endStr
+    const expenses = allExpenses.filter((e: any) => 
+      e.status === 'Paid' && e.date >= startStr && e.date <= endStr
     );
 
     const expensesByCategory: Record<string, number> = {};
@@ -1161,17 +988,16 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
 
     const netProfit = totalRevenue - totalExpenses;
 
-    // Monthly trend for current year
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const currentYear = new Date().getFullYear();
     const monthlyTrend = months.map((m, idx) => {
       const monthPrefix = `${currentYear}-${String(idx + 1).padStart(2, '0')}`;
-      const mRev = (db.payments || []).filter((p: any) => p.schoolId === schoolId && p.paymentDate?.startsWith(monthPrefix))
+      const mRev = allPayments.filter((p: any) => p.paymentDate?.startsWith(monthPrefix))
         .reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0) +
-        (db.income || []).filter((inc: any) => inc.schoolId === schoolId && inc.date?.startsWith(monthPrefix))
+        allIncome.filter((inc: any) => inc.date?.startsWith(monthPrefix))
         .reduce((s: number, inc: any) => s + (Number(inc.amount) || 0), 0);
 
-      const mExp = (db.expenses || []).filter((e: any) => e.schoolId === schoolId && e.status === 'Paid' && e.date?.startsWith(monthPrefix))
+      const mExp = allExpenses.filter((e: any) => e.status === 'Paid' && e.date?.startsWith(monthPrefix))
         .reduce((s: number, e: any) => s + (Number(e.amount) || 0), 0);
 
       return {
@@ -1196,18 +1022,15 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     9. CASH FLOW MANAGEMENT (Opening + Inflows - Outflows = Closing)
+     9. CASH FLOW
      ========================================================================= */
   app.get("/api/cash-flow", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
-
-    const db = getEnsureDB();
     const openingBalance = Number(req.query.openingBalance) || 0;
 
-    const payments = (db.payments || []).filter((p: any) => p.schoolId === schoolId);
-    const standaloneIncome = (db.income || []).filter((inc: any) => inc.schoolId === schoolId);
-    const expenses = (db.expenses || []).filter((e: any) => e.schoolId === schoolId && e.status === 'Paid');
+    const payments = await store.getPayments(schoolId);
+    const standaloneIncome = await store.getIncome(schoolId);
+    const expenses = (await store.getExpenses(schoolId)).filter((e: any) => e.status === 'Paid');
 
     let totalInflows = 0;
     const inflowsByCategory: Record<string, number> = {};
@@ -1270,19 +1093,16 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     10. FINANCE DASHBOARD STATS (Aggregated Institutional Metrics)
+     10. FINANCE STATS
      ========================================================================= */
   app.get("/api/finance/stats", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
-
-    const db = getEnsureDB();
-    const invoices = (db.invoices || []).filter((inv: any) => inv.schoolId === schoolId);
-    const payments = (db.payments || []).filter((p: any) => p.schoolId === schoolId);
-    const expenses = (db.expenses || []).filter((e: any) => e.schoolId === schoolId);
+    const invoices = await store.getInvoices(schoolId);
+    const payments = await store.getPayments(schoolId);
+    const expenses = await store.getExpenses(schoolId);
     const paidExpenses = expenses.filter((e: any) => e.status === 'Paid');
-    const income = (db.income || []).filter((inc: any) => inc.schoolId === schoolId);
-    const payroll = (db.payroll || []).filter((pr: any) => pr.schoolId === schoolId);
+    const income = await store.getIncome(schoolId);
+    const payroll = await store.getPayroll(schoolId);
 
     const totalStudentFeePaid = payments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
     const totalStandaloneIncome = income.reduce((sum: number, inc: any) => sum + (Number(inc.amount) || 0), 0);
@@ -1315,33 +1135,30 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     11. FINANCIAL REPORTS (Comprehensive Print/PDF/Excel Data Feeds)
+     11. FINANCIAL REPORTS
      ========================================================================= */
   app.get("/api/financial-reports", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
-
-    const db = getEnsureDB();
     const { type } = req.query;
 
     if (type === 'revenue') {
-      const payments = (db.payments || []).filter((p: any) => p.schoolId === schoolId);
-      const income = (db.income || []).filter((inc: any) => inc.schoolId === schoolId);
+      const payments = await store.getPayments(schoolId);
+      const income = await store.getIncome(schoolId);
       return res.json({ payments, income });
     }
 
     if (type === 'expenses') {
-      const expenses = (db.expenses || []).filter((e: any) => e.schoolId === schoolId);
+      const expenses = await store.getExpenses(schoolId);
       return res.json({ expenses });
     }
 
     if (type === 'payroll') {
-      const payroll = (db.payroll || []).filter((pr: any) => pr.schoolId === schoolId);
+      const payroll = await store.getPayroll(schoolId);
       return res.json({ payroll });
     }
 
     if (type === 'fees') {
-      const invoices = (db.invoices || []).filter((inv: any) => inv.schoolId === schoolId);
+      const invoices = await store.getInvoices(schoolId);
       return res.json({ invoices });
     }
 
@@ -1349,14 +1166,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     12. DISCOUNTS & WAIVERS (Auditable, Controlled, Tenant-Scoped)
+     12. DISCOUNTS MODULE
      ========================================================================= */
   app.get("/api/discounts", async (req, res) => {
     const schoolId = getSchoolId(req);
-    const db = getEnsureDB();
-    let discounts = (db.discounts || []).filter((d: any) => d.schoolId === schoolId);
-
+    let discounts = await store.getDiscounts(schoolId);
     const { invoiceId, studentId, search } = req.query;
+
     if (invoiceId) discounts = discounts.filter((d: any) => d.invoiceId === invoiceId);
     if (studentId) discounts = discounts.filter((d: any) => d.studentId === studentId);
     if (search) {
@@ -1371,7 +1187,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return res.json(discounts);
   });
 
-  app.post("/api/discounts", async (req, res) => {
+  app.post("/api/discounts", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid bixinta qiimo-dhimista (Forbidden)" });
 
@@ -1383,15 +1199,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       return res.status(400).json({ error: "Qiimo-dhimistu waa inay ka weynaato 0 (Value must be > 0)" });
     }
 
-    const db = getEnsureDB();
-    const invoiceIdx = (db.invoices || []).findIndex((inv: any) => inv.id === invoiceId && inv.schoolId === schoolId);
-    if (invoiceIdx === -1) {
+    const invoices = await store.getInvoices(schoolId);
+    const inv = invoices.find((i: any) => i.id === invoiceId);
+    if (!inv) {
       return res.status(404).json({ error: "Biilka lama helin (Invoice not found)" });
     }
 
-    const inv = db.invoices[invoiceIdx];
     const maxDiscountAllowed = Math.max(0, inv.subtotal - (inv.paidAmount || 0));
-
     let discountAmount = 0;
     if (discountType === 'percentage') {
       discountAmount = Math.round(((inv.subtotal * numValue) / 100) * 100) / 100;
@@ -1409,7 +1223,6 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       });
     }
 
-    // New totals
     const currentDiscount = Number(inv.discount) || 0;
     const newTotalDiscount = Math.round((currentDiscount + discountAmount) * 100) / 100;
     const newTotal = Math.max(0, Math.round((inv.subtotal - newTotalDiscount) * 100) / 100);
@@ -1434,7 +1247,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    db.invoices[invoiceIdx] = {
+    const updatedInvoice = {
       ...inv,
       discount: newTotalDiscount,
       total: newTotal,
@@ -1443,13 +1256,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       updatedAt: new Date().toISOString()
     };
 
-    db.discounts.unshift(discountRecord);
-    saveLocalDB(db);
+    await store.saveInvoice(updatedInvoice);
+    await store.saveDiscount(discountRecord);
 
     return res.status(201).json({
       success: true,
       discount: discountRecord,
-      invoice: db.invoices[invoiceIdx]
+      invoice: updatedInvoice
     });
   });
 
@@ -1458,44 +1271,41 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!authorized) return res.status(403).json({ error: "Forbidden" });
 
     const { id } = req.params;
-    const db = getEnsureDB();
-    const discIdx = (db.discounts || []).findIndex((d: any) => d.id === id && d.schoolId === schoolId);
-    if (discIdx === -1) return res.status(404).json({ error: "Discount record not found" });
+    const discounts = await store.getDiscounts(schoolId);
+    const disc = discounts.find((d: any) => d.id === id);
+    if (!disc) return res.status(404).json({ error: "Discount not found" });
 
-    const disc = db.discounts[discIdx];
-    const invoiceIdx = (db.invoices || []).findIndex((inv: any) => inv.id === disc.invoiceId && inv.schoolId === schoolId);
-    
-    if (invoiceIdx > -1) {
-      const inv = db.invoices[invoiceIdx];
-      const newDiscount = Math.max(0, Math.round(((inv.discount || 0) - disc.amount) * 100) / 100);
-      const newTotal = Math.max(0, Math.round((inv.subtotal - newDiscount) * 100) / 100);
+    // Revert invoice discount
+    const invoices = await store.getInvoices(schoolId);
+    const inv = invoices.find((i: any) => i.id === disc.invoiceId);
+    if (inv) {
+      const newTotalDiscount = Math.max(0, Math.round(((inv.discount || 0) - disc.amount) * 100) / 100);
+      const newTotal = Math.max(0, Math.round((inv.subtotal - newTotalDiscount) * 100) / 100);
       const newBalance = Math.max(0, Math.round((newTotal - (inv.paidAmount || 0)) * 100) / 100);
       const newStatus = newBalance === 0 ? 'Paid' : (inv.paidAmount > 0 ? 'Partially Paid' : 'Unpaid');
 
-      db.invoices[invoiceIdx] = {
+      await store.saveInvoice({
         ...inv,
-        discount: newDiscount,
+        discount: newTotalDiscount,
         total: newTotal,
         balance: newBalance,
         status: newStatus,
         updatedAt: new Date().toISOString()
-      };
+      });
     }
 
-    db.discounts.splice(discIdx, 1);
-    saveLocalDB(db);
+    await store.deleteDiscount(id, schoolId);
     return res.json({ success: true });
   });
 
   /* =========================================================================
-     13. REFUNDS (Linked to Original Payments, Balance Integrity, Auditable)
+     13. REFUNDS MODULE
      ========================================================================= */
   app.get("/api/refunds", async (req, res) => {
     const schoolId = getSchoolId(req);
-    const db = getEnsureDB();
-    let refunds = (db.refunds || []).filter((r: any) => r.schoolId === schoolId);
-
+    let refunds = await store.getRefunds(schoolId);
     const { paymentId, invoiceId, studentId } = req.query;
+
     if (paymentId) refunds = refunds.filter((r: any) => r.paymentId === paymentId);
     if (invoiceId) refunds = refunds.filter((r: any) => r.invoiceId === invoiceId);
     if (studentId) refunds = refunds.filter((r: any) => r.studentId === studentId);
@@ -1503,25 +1313,22 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     return res.json(refunds);
   });
 
-  app.post("/api/refunds", async (req, res) => {
+  app.post("/api/refunds", financeWriteLimiter, async (req, res) => {
     const { authorized, schoolId } = checkFinanceAuth(req, "finance.manage");
     if (!authorized) return res.status(403).json({ error: "U fasax ma tihid celinta lacagta (Forbidden)" });
 
     const { paymentId, refundAmount, reason, approvedBy, notes, date } = req.body;
-    const amountToRefund = Math.round(Number(refundAmount) * 100) / 100;
+    const amtCheck = validatePositiveAmount(refundAmount);
+    if (!amtCheck.valid) return res.status(400).json({ error: amtCheck.error });
+    const amountToRefund = amtCheck.value;
 
-    if (isNaN(amountToRefund) || amountToRefund <= 0) {
-      return res.status(400).json({ error: "Fadlan geli cadad lacageed oo sax ah" });
-    }
-
-    const db = getEnsureDB();
-    const payment = (db.payments || []).find((p: any) => p.id === paymentId && p.schoolId === schoolId);
+    const payments = await store.getPayments(schoolId);
+    const payment = payments.find((p: any) => p.id === paymentId);
     if (!payment) {
       return res.status(404).json({ error: "Rasiidka/Lacag bixinta asalka ah lama helin (Payment not found)" });
     }
 
-    // Calculate existing refunds on this payment
-    const priorRefunds = (db.refunds || []).filter((r: any) => r.paymentId === paymentId && r.schoolId === schoolId);
+    const priorRefunds = (await store.getRefunds(schoolId)).filter((r: any) => r.paymentId === paymentId);
     const totalPriorRefunded = priorRefunds.reduce((sum: number, r: any) => sum + (Number(r.refundAmount) || 0), 0);
     const remainingRefundable = Math.max(0, Math.round((payment.amount - totalPriorRefunded) * 100) / 100);
 
@@ -1531,31 +1338,23 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       });
     }
 
-    // Update invoice
-    const invoiceIdx = (db.invoices || []).findIndex((inv: any) => inv.id === payment.invoiceId && inv.schoolId === schoolId);
+    const invoices = await store.getInvoices(schoolId);
+    const inv = invoices.find((i: any) => i.id === payment.invoiceId);
     let updatedInvoice = null;
 
-    if (invoiceIdx > -1) {
-      const inv = db.invoices[invoiceIdx];
+    if (inv) {
       const newPaid = Math.max(0, Math.round(((inv.paidAmount || 0) - amountToRefund) * 100) / 100);
       const newBal = Math.max(0, Math.round((inv.total - newPaid) * 100) / 100);
       const newStat = newBal === 0 ? 'Paid' : (newPaid > 0 ? 'Partially Paid' : 'Unpaid');
 
-      db.invoices[invoiceIdx] = {
+      updatedInvoice = {
         ...inv,
         paidAmount: newPaid,
         balance: newBal,
         status: newStat,
         updatedAt: new Date().toISOString()
       };
-      updatedInvoice = db.invoices[invoiceIdx];
-
-      // Mirror to db.fees
-      const feeIdx = (db.fees || []).findIndex((f: any) => f.id === payment.invoiceId);
-      if (feeIdx > -1) {
-        db.fees[feeIdx].paidAmount = newPaid;
-        db.fees[feeIdx].status = newStat.toLowerCase();
-      }
+      await store.saveInvoice(updatedInvoice);
     }
 
     const refundRecord = {
@@ -1577,8 +1376,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       createdAt: new Date().toISOString()
     };
 
-    db.refunds.unshift(refundRecord);
-    saveLocalDB(db);
+    await store.saveRefund(refundRecord);
 
     return res.status(201).json({
       success: true,
@@ -1588,17 +1386,14 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     14. OUTSTANDING WORKSPACE (Debtors, Aging Analysis, Exportable)
+     14. OUTSTANDING WORKSPACE
      ========================================================================= */
   app.get("/api/outstanding", async (req, res) => {
     const schoolId = getSchoolId(req);
-    syncLegacyFeesToInvoices(schoolId);
+    const allInvoices = await store.getInvoices(schoolId);
+    let invoices = allInvoices.filter((inv: any) => inv.balance > 0 && inv.status !== 'Cancelled');
 
-    const db = getEnsureDB();
-    let invoices = (db.invoices || []).filter((inv: any) => inv.schoolId === schoolId && inv.balance > 0 && inv.status !== 'Cancelled');
-
-    const { class: className, studentId, feeCategory, overdueOnly, search } = req.query;
-
+    const { class: className, studentId, overdueOnly, search } = req.query;
     if (className && className !== 'All') {
       invoices = invoices.filter((inv: any) => inv.className === className);
     }
@@ -1634,7 +1429,6 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     });
 
     const filteredDebtors = overdueOnly === 'true' ? debtors.filter((d: any) => d.isOverdue) : debtors;
-
     const totalOutstanding = filteredDebtors.reduce((sum: number, d: any) => sum + (Number(d.balance) || 0), 0);
     const overdueDebtors = filteredDebtors.filter((d: any) => d.isOverdue);
     const totalOverdue = overdueDebtors.reduce((sum: number, d: any) => sum + (Number(d.balance) || 0), 0);
@@ -1659,12 +1453,13 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     15. RECEIPTS MODULE (Enriched Official Payment Receipts)
+     15. RECEIPTS MODULE
      ========================================================================= */
   app.get("/api/receipts", async (req, res) => {
     const schoolId = getSchoolId(req);
-    const db = getEnsureDB();
-    let payments = (db.payments || []).filter((p: any) => p.schoolId === schoolId);
+    let payments = await store.getPayments(schoolId);
+    const invoices = await store.getInvoices(schoolId);
+    const students = await store.getStudents(schoolId);
 
     const { method, search, from, to } = req.query;
     if (method && method !== 'All') {
@@ -1683,10 +1478,9 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       );
     }
 
-    // Attach student phone and class info if available
     const enrichedReceipts = payments.map((p: any) => {
-      const inv = (db.invoices || []).find((i: any) => i.id === p.invoiceId);
-      const student = (db.students || []).find((s: any) => s.id === p.studentId);
+      const inv = invoices.find((i: any) => i.id === p.invoiceId);
+      const student = students.find((s: any) => s.id === p.studentId);
       return {
         ...p,
         guardianPhone: inv?.guardianPhone || student?.guardianPhone || '',
@@ -1700,21 +1494,25 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
   });
 
   /* =========================================================================
-     16. STUDENT FINANCIAL STATEMENT (/api/students/:id/finance)
+     16. STUDENT FINANCIAL STATEMENT
      ========================================================================= */
   app.get("/api/students/:id/finance", async (req, res) => {
     const schoolId = getSchoolId(req);
     const { id } = req.params;
-    syncLegacyFeesToInvoices(schoolId);
 
-    const db = getEnsureDB();
-    const student = (db.students || []).find((s: any) => s.id === id && s.schoolId === schoolId);
+    const students = await store.getStudents(schoolId);
+    const student = students.find((s: any) => s.id === id);
     if (!student) return res.status(404).json({ error: "Ardayga lama helin (Student not found)" });
 
-    const invoices = (db.invoices || []).filter((inv: any) => inv.studentId === id && inv.schoolId === schoolId);
-    const payments = (db.payments || []).filter((p: any) => p.studentId === id && p.schoolId === schoolId);
-    const discounts = (db.discounts || []).filter((d: any) => d.studentId === id && d.schoolId === schoolId);
-    const refunds = (db.refunds || []).filter((r: any) => r.studentId === id && r.schoolId === schoolId);
+    const allInvoices = await store.getInvoices(schoolId);
+    const allPayments = await store.getPayments(schoolId);
+    const allDiscounts = await store.getDiscounts(schoolId);
+    const allRefunds = await store.getRefunds(schoolId);
+
+    const invoices = allInvoices.filter((inv: any) => inv.studentId === id);
+    const payments = allPayments.filter((p: any) => p.studentId === id);
+    const discounts = allDiscounts.filter((d: any) => d.studentId === id);
+    const refunds = allRefunds.filter((r: any) => r.studentId === id);
 
     const totalBilled = invoices.reduce((s: number, i: any) => s + (Number(i.subtotal) || 0), 0);
     const totalDiscounts = discounts.reduce((s: number, d: any) => s + (Number(d.amount) || 0), 0);

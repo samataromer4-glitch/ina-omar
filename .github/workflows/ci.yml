@@ -1,0 +1,44 @@
+name: DUGSI PRO 2026 - Production CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  verify:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Typecheck & Lint
+        run: npm run lint
+
+      - name: Build Applet & Server Bundle
+        run: npm run build
+
+      - name: Start Server in Background for Integration Tests
+        run: |
+          npm run dev &
+          npx wait-on -t 30000 http://127.0.0.1:3000/
+        env:
+          PORT: 3000
+          NODE_ENV: test
+
+      - name: Run Automated Test Suite
+        run: npm test
+        env:
+          TEST_BASE_URL: http://127.0.0.1:3000

@@ -458,8 +458,81 @@ CREATE TABLE IF NOT EXISTS dugsiga_payroll (
   updated_at TEXT
 );
 
+-- 28. Discounts Table (Qiimo-Dhimista Biilasha & Oggolaanshaha)
+CREATE TABLE IF NOT EXISTS dugsiga_discounts (
+  id TEXT PRIMARY KEY,
+  school_id TEXT NOT NULL,
+  invoice_id TEXT NOT NULL,
+  invoice_number TEXT,
+  student_id TEXT NOT NULL,
+  student_name TEXT,
+  class_name TEXT,
+  discount_type TEXT DEFAULT 'fixed',
+  value NUMERIC NOT NULL DEFAULT 0,
+  amount NUMERIC NOT NULL DEFAULT 0,
+  reason TEXT,
+  approved_by TEXT,
+  date TEXT,
+  notes TEXT,
+  created_at TEXT
+);
+
+-- 29. Refunds Table (Diiwaanka Lacag-Celinta Rasiidhada & Oggolaanshaha)
+CREATE TABLE IF NOT EXISTS dugsiga_refunds (
+  id TEXT PRIMARY KEY,
+  school_id TEXT NOT NULL,
+  payment_id TEXT NOT NULL,
+  receipt_number TEXT,
+  invoice_id TEXT,
+  invoice_number TEXT,
+  student_id TEXT,
+  student_name TEXT,
+  class_name TEXT,
+  refund_amount NUMERIC NOT NULL DEFAULT 0,
+  payment_method TEXT DEFAULT 'Cash',
+  reason TEXT,
+  approved_by TEXT,
+  date TEXT,
+  notes TEXT,
+  created_at TEXT
+);
+
 -- ----------------------------------------------------------------------------
--- QAYBTA 4: FASAXA IL-LA-SOCODKA & HELITAANKA TOOSKA AH (PERMISSIONS & RLS)
+-- QAYBTA 4: TUSMOOYINKA (INDEXES FOR TENANT ISOLATION & PERFORMANCE)
+-- ----------------------------------------------------------------------------
+
+CREATE INDEX IF NOT EXISTS idx_dugsiga_users_email ON dugsiga_users(email);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_students_school_id ON dugsiga_students(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_classes_school_id ON dugsiga_classes(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_subjects_school_id ON dugsiga_subjects(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_exam_scores_school_id ON dugsiga_exam_scores(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_attendance_school_id ON dugsiga_attendance(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_fees_school_id ON dugsiga_fees(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_settings_school_id ON dugsiga_settings(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_teachers_school_id ON dugsiga_teachers(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_staff_school_id ON dugsiga_staff(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_guardians_school_id ON dugsiga_guardians(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_staff_attendance_school_id ON dugsiga_staff_attendance(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_timetable_school_id ON dugsiga_timetable(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_admissions_school_id ON dugsiga_admissions(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_announcements_school_id ON dugsiga_announcements(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_library_books_school_id ON dugsiga_library_books(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_library_loans_school_id ON dugsiga_library_loans(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_inventory_school_id ON dugsiga_inventory(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_documents_school_id ON dugsiga_documents(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_notifications_school_id ON dugsiga_notifications(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_fee_structures_school_id ON dugsiga_fee_structures(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_invoices_school_id ON dugsiga_invoices(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_payments_school_id ON dugsiga_payments(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_expenses_school_id ON dugsiga_expenses(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_income_school_id ON dugsiga_income(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_budgets_school_id ON dugsiga_budgets(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_payroll_school_id ON dugsiga_payroll(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_discounts_school_id ON dugsiga_discounts(school_id);
+CREATE INDEX IF NOT EXISTS idx_dugsiga_refunds_school_id ON dugsiga_refunds(school_id);
+
+-- ----------------------------------------------------------------------------
+-- QAYBTA 5: FASAXA IL-LA-SOCODKA & HELITAANKA TOOSKA AH (PERMISSIONS & RLS)
 -- ----------------------------------------------------------------------------
 
 DO $$
@@ -492,7 +565,9 @@ DECLARE
     'dugsiga_expenses',
     'dugsiga_income',
     'dugsiga_budgets',
-    'dugsiga_payroll'
+    'dugsiga_payroll',
+    'dugsiga_discounts',
+    'dugsiga_refunds'
   ];
 BEGIN
   FOREACH tbl_name IN ARRAY tables_list LOOP
@@ -505,4 +580,4 @@ BEGIN
   END LOOP;
 END $$;
 
--- Mahadsanid! Dhammaan 27-ka miis ee DUGSI PRO 2026 hadda waa diyaarsan yihiin.
+-- Mahadsanid! Dhammaan 29-ka miis ee DUGSI PRO 2026 hadda waa diyaarsan yihiin.
