@@ -1,3 +1,4 @@
+import "express-async-errors";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -8,7 +9,13 @@ import dotenv from "dotenv";
 import { withSupabase, createSupabaseContext } from "@supabase/server";
 import { registerModernRoutes } from "./server/modernRoutes";
 import { registerFinanceRoutes } from "./server/financeRoutes";
-import { getAuthenticatedUser, createSessionToken } from "./server/authSession";
+import { 
+  getAuthenticatedUser, 
+  createSessionToken, 
+  hashPassword, 
+  verifyPassword, 
+  legacySimpleHash 
+} from "./server/authSession";
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -264,6 +271,15 @@ function loadLocalDB(): LocalDB {
   };
 
   if (!fs.existsSync(LOCAL_DB_PATH)) {
+    const seedPath = path.join(process.cwd(), "database.seed.json");
+    if (fs.existsSync(seedPath)) {
+      try {
+        const seedData = JSON.parse(fs.readFileSync(seedPath, "utf-8"));
+        const initial = ensureArrays(seedData);
+        fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(initial, null, 2));
+        return initial;
+      } catch (err) {}
+    }
     const initial = ensureArrays({ settings: defaultSettings });
     fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(initial, null, 2));
     return initial;
@@ -285,16 +301,12 @@ function saveLocalDB(data: LocalDB) {
 }
 
 function getSchoolId(req: express.Request): string {
-  // ZERO TRUST CLIENT: Validate tenant from authenticated session or registered database record
+  // ZERO TRUST CLIENT: Validate tenant strictly from authenticated session token
   const authUser = getAuthenticatedUser(req, loadLocalDB);
   if (authUser && authUser.schoolId) {
     return authUser.schoolId;
   }
-  const emailHeader = req.headers["x-school-email"] || req.headers["X-School-Email"] || req.headers["x-school-id"] || req.headers["X-School-Id"];
-  if (typeof emailHeader === "string" && emailHeader.trim() !== "") {
-    return emailHeader.trim().toLowerCase();
-  }
-  return "default-school";
+  throw new Error("UNAUTHENTICATED");
 }
 
 function buildAuthResponse(cleanEmail: string, db: any) {
@@ -318,6 +330,7 @@ function buildAuthResponse(cleanEmail: string, db: any) {
       assignedSubjects: teacher.assignedSubjects || []
     };
     const token = createSessionToken(userPayload);
+    userPayload.token = token;
     return {
       success: true,
       token,
@@ -333,6 +346,7 @@ function buildAuthResponse(cleanEmail: string, db: any) {
     schoolId: userRecord?.school_id || cleanEmail
   };
   const token = createSessionToken(userPayload);
+  userPayload.token = token;
   return {
     success: true,
     token,
@@ -823,15 +837,7 @@ function hasPermission(role: string, requiredPermission: string): boolean {
   return false;
 }
 
-function simpleHash(password: string): string {
-  let hash = 0;
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash.toString(16);
-}
+const simpleHash = legacySimpleHash;
 
 // ✅ EMAIL VERIFICATION LA SAARAY - Auto verified
 async function sendVerificationEmail(toEmail: string, code: string) {
@@ -982,7 +988,7 @@ app.post("/api/auth/signup", async (req, res) => {
     return res.status(400).json({ error: "Email sax ah iyo password fadlan geli." });
   }
   const cleanEmail = email.trim().toLowerCase();
-  const passwordHash = simpleHash(password);
+  const passwordHash = hashPassword(password);
 
   const db = loadLocalDB();
   const existingLocalUser = db.users.find(u => u.email.toLowerCase() === cleanEmail);
@@ -1023,11 +1029,20 @@ app.post("/api/auth/signup", async (req, res) => {
     saveLocalDB(db);
   }
 
+  const userPayload: any = {
+    email: cleanEmail,
+    role: "admin",
+    schoolId: cleanEmail
+  };
+  const token = createSessionToken(userPayload);
+  userPayload.token = token;
+
   res.json({
     success: true,
     message: "Diiwaangelintu way guuleysatay! Hadda geli kartaa.",
     emailSent: false,
-    user: { email: cleanEmail }
+    token,
+    user: userPayload
   });
 });
 
@@ -1051,7 +1066,6 @@ app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Fadlan geli email iyo password." });
   const cleanEmail = email.trim().toLowerCase();
-  const passwordHash = simpleHash(password);
 
   // 1. If Supabase is connected, check Supabase first (source of truth)
   if (!useLocalFallback && supabase) {
@@ -1065,20 +1079,29 @@ app.post("/api/auth/login", async (req, res) => {
       if (!error && user) {
         const db = loadLocalDB();
         const localUser = db.users.find(u => u.email.toLowerCase() === cleanEmail);
-        const matchesCloud = user.password === passwordHash;
-        const matchesLocal = localUser && localUser.password_hash === passwordHash;
+        const matchesCloud = verifyPassword(password, user.password || "");
+        const matchesLocal = localUser && verifyPassword(password, localUser.password_hash || "");
 
         if (matchesCloud || matchesLocal) {
-          if (matchesLocal && !matchesCloud) {
-            await supabase.from("dugsiga_users").update({ password: passwordHash }).ilike("email", cleanEmail);
+          // Transparent migration: if stored hash is legacy format (no colon), upgrade to salted scrypt hash
+          const cloudNeedsMigration = user.password && !user.password.includes(":");
+          const localNeedsMigration = localUser && localUser.password_hash && !localUser.password_hash.includes(":");
+          const freshHash = (cloudNeedsMigration || localNeedsMigration) ? hashPassword(password) : null;
+
+          if (freshHash) {
+            if (cloudNeedsMigration) {
+              await supabase.from("dugsiga_users").update({ password: freshHash }).ilike("email", cleanEmail);
+            }
+            const localIdx = db.users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+            if (localIdx !== -1) {
+              db.users[localIdx].password_hash = freshHash;
+            } else {
+              db.users.push({ email: cleanEmail, password_hash: freshHash, verified: true });
+            }
+            saveLocalDB(db);
+          } else if (matchesLocal && !matchesCloud) {
+            await supabase.from("dugsiga_users").update({ password: localUser.password_hash }).ilike("email", cleanEmail);
           }
-          const localIdx = db.users.findIndex(u => u.email.toLowerCase() === cleanEmail);
-          if (localIdx !== -1) {
-            db.users[localIdx].password_hash = passwordHash;
-          } else {
-            db.users.push({ email: cleanEmail, password_hash: passwordHash, verified: true });
-          }
-          saveLocalDB(db);
 
           const authRes = buildAuthResponse(cleanEmail, db);
           if (authRes.error) {
@@ -1099,7 +1122,16 @@ app.post("/api/auth/login", async (req, res) => {
   const localUser = db.users.find(u => u.email.toLowerCase() === cleanEmail);
 
   if (localUser) {
-    if (localUser.password_hash === passwordHash) {
+    if (verifyPassword(password, localUser.password_hash || "")) {
+      // Migrate old hash if needed
+      if (localUser.password_hash && !localUser.password_hash.includes(":")) {
+        const freshHash = hashPassword(password);
+        localUser.password_hash = freshHash;
+        saveLocalDB(db);
+        if (!useLocalFallback && supabase) {
+          supabase.from("dugsiga_users").update({ password: freshHash }).ilike("email", cleanEmail).then(() => {}).catch(() => {});
+        }
+      }
       const authRes = buildAuthResponse(cleanEmail, db);
       if (authRes.error) {
         return res.status(403).json({ error: authRes.error });
@@ -1127,7 +1159,7 @@ app.get("/api/students", async (req, res) => {
       }
       const { data, error } = await query;
       if (error) throw error;
-      const students = data.map(s => ({
+      const students = (data || []).map(s => ({
         id: s.id,
         fullName: s.full_name,
         class: s.class,
@@ -1639,7 +1671,7 @@ app.get("/api/fees", async (req, res) => {
     try {
       const { data, error } = await supabase.from("dugsiga_fees").select("*").eq("school_id", schoolId);
       if (error) throw error;
-      const formatted = data.map(f => ({ id: f.id, studentId: f.student_id, month: f.month, year: f.year, amount: parseFloat(f.amount), paidAmount: parseFloat(f.paid_amount), status: f.status, createdAt: f.created_at, updatedAt: f.updated_at, history: f.history || [] }));
+      const formatted = (data || []).map(f => ({ id: f.id, studentId: f.student_id, month: f.month, year: f.year, amount: parseFloat(f.amount), paidAmount: parseFloat(f.paid_amount), status: f.status, createdAt: f.created_at, updatedAt: f.updated_at, history: f.history || [] }));
       return res.json(formatted);
     } catch (e: any) { return handleSupabaseError(res, e, "Soo qaadista Biilasha (Fetch Fees)"); }
   } else {
@@ -1740,7 +1772,7 @@ app.get("/api/classes", async (req, res) => {
     try {
       const { data, error } = await supabase.from("dugsiga_classes").select("*").eq("school_id", schoolId);
       if (error) throw error;
-      const formatted = data.map(c => ({ id: c.id, className: c.class_name, teacherName: c.teacher_name, roomNumber: c.room_number, description: c.description, createdAt: c.created_at }));
+      const formatted = (data || []).map(c => ({ id: c.id, className: c.class_name, teacherName: c.teacher_name, roomNumber: c.room_number, description: c.description, createdAt: c.created_at }));
       return res.json(formatted);
     } catch (e: any) { return handleSupabaseError(res, e, "Soo qaadista Fasallada (Fetch Classes)"); }
   } else {
@@ -1817,7 +1849,7 @@ app.get("/api/subjects", async (req, res) => {
     try {
       const { data, error } = await supabase.from("dugsiga_subjects").select("*").eq("school_id", schoolId);
       if (error) throw error;
-      const formatted = data.map(s => ({ id: s.id, subjectName: s.subject_name, subjectCode: s.subject_code, className: s.class_name, teacherName: s.teacher_name, createdAt: s.created_at }));
+      const formatted = (data || []).map(s => ({ id: s.id, subjectName: s.subject_name, subjectCode: s.subject_code, className: s.class_name, teacherName: s.teacher_name, createdAt: s.created_at }));
       return res.json(formatted);
     } catch (e: any) { return handleSupabaseError(res, e, "Soo qaadista Maddooyinka (Fetch Subjects)"); }
   } else {
@@ -1894,7 +1926,7 @@ app.get("/api/exams", async (req, res) => {
     try {
       const { data, error } = await supabase.from("dugsiga_exam_scores").select("*").eq("school_id", schoolId);
       if (error) throw error;
-      const formatted = data.map(e => ({ id: e.id, studentId: e.student_id, studentName: e.student_name, className: e.class_name, subjectName: e.subject_name, examName: e.exam_name, term: e.term, maxMarks: Number(e.max_marks || 100), marksObtained: Number(e.marks_obtained), grade: e.grade, examDate: e.exam_date, createdAt: e.created_at }));
+      const formatted = (data || []).map(e => ({ id: e.id, studentId: e.student_id, studentName: e.student_name, className: e.class_name, subjectName: e.subject_name, examName: e.exam_name, term: e.term, maxMarks: Number(e.max_marks || 100), marksObtained: Number(e.marks_obtained), grade: e.grade, examDate: e.exam_date, createdAt: e.created_at }));
       return res.json(formatted);
     } catch (e: any) { return handleSupabaseError(res, e, "Soo qaadista Imtixaanada (Fetch Exams)"); }
   } else {
@@ -2074,6 +2106,17 @@ app.post("/api/reset", async (req, res) => {
   }
   saveLocalDB(db);
   res.json({ success: true });
+});
+
+// Central error handling middleware (handles UNAUTHENTICATED errors across all routes)
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err && (err.message === "UNAUTHENTICATED" || err.message?.includes("UNAUTHENTICATED") || err.status === 401)) {
+    return res.status(401).json({ error: "Fadlan soo gal (login) marka hore." });
+  }
+  console.error("Server error:", err?.message || err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: "Cillad farsamo ayaa dhacday." });
+  }
 });
 
 if (process.env.DISABLE_HMR !== "true") {

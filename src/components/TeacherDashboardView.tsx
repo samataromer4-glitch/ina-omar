@@ -23,20 +23,20 @@ interface TeacherDashboardViewProps {
 
 export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
   user,
-  students,
-  classes,
-  subjects,
+  students = [],
+  classes = [],
+  subjects = [],
   onNavigate
 }) => {
-  const assignedClasses = user.assignedClasses || [];
-  const assignedSubjects = user.assignedSubjects || [];
+  const assignedClasses = user?.assignedClasses || [];
+  const assignedSubjects = user?.assignedSubjects || [];
 
   // Filter students to teacher's classes
   const myStudents = assignedClasses.length > 0
-    ? students.filter(s => assignedClasses.includes(s.class))
-    : students;
+    ? (students || []).filter(s => s && assignedClasses.includes(s.class))
+    : (students || []);
 
-  const myClassesDetails = classes.filter(c => assignedClasses.includes(c.className));
+  const myClassesDetails = (classes || []).filter(c => c && assignedClasses.includes(c.className));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -58,8 +58,8 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
 
           {/* Assigned Badges */}
           <div className="flex flex-wrap gap-2 pt-2">
-            {assignedClasses.length > 0 ? (
-              assignedClasses.map(cls => (
+            {(assignedClasses || []).length > 0 ? (
+              (assignedClasses || []).map(cls => (
                 <span
                   key={cls}
                   className="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-purple-500/40 text-xs font-medium text-purple-200 flex items-center gap-1.5"
@@ -72,7 +72,7 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
               <span className="text-xs text-slate-400 italic">Ma jiraan fasallo gaar ah oo laguu qoondeeyay</span>
             )}
 
-            {assignedSubjects.map(sub => (
+            {(assignedSubjects || []).map(sub => (
               <span
                 key={sub}
                 className="px-2.5 py-1 rounded-lg bg-slate-800/90 border border-indigo-500/40 text-xs font-medium text-indigo-200 flex items-center gap-1.5"
@@ -218,8 +218,8 @@ export const TeacherDashboardView: React.FC<TeacherDashboardViewProps> = ({
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {assignedClasses.map(clsName => {
-              const clsStudents = students.filter(s => s.class === clsName);
+            {(assignedClasses || []).map(clsName => {
+              const clsStudents = (students || []).filter(s => s && s.class === clsName);
               return (
                 <div
                   key={clsName}

@@ -15,7 +15,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface IncomeModuleProps {
-  incomeList: IncomeRecord[];
+  incomeList?: IncomeRecord[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -34,7 +34,7 @@ const INCOME_CATEGORIES = [
 ];
 
 export const IncomeModule: React.FC<IncomeModuleProps> = ({
-  incomeList,
+  incomeList = [],
   currency,
   schoolName,
   onRefresh,

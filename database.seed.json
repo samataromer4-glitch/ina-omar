@@ -1,0 +1,137 @@
+{
+  "users": [
+    {
+      "email": "admin@dugsipro.com",
+      "password_hash": "b99c56bb42c2fdcae0ea28d066a0d806:dbf40363394284154d4a5ccd6f7953830fa1e8863a869d1dfe66ae1fe39b523e4dbcc7853a11b2133d0baa03b3796d495fe98b26840b53e9be0106065d9dd144",
+      "verified": true,
+      "role": "admin",
+      "school_id": "admin@dugsipro.com"
+    },
+    {
+      "email": "test@dugsipro.com",
+      "password_hash": "-6ef1ff7c",
+      "verified": true,
+      "role": "admin",
+      "school_id": "test@dugsipro.com"
+    }
+  ],
+  "students": [
+    {
+      "id": "std-1001",
+      "fullName": "Axmed Cali Maxamed",
+      "class": "Fasalka 1aad (Grade 1)",
+      "gender": "male",
+      "guardianPhone": "+252615112233",
+      "guardianName": "Cali Maxamed",
+      "status": "active",
+      "createdAt": "2026-09-01",
+      "schoolId": "admin@dugsipro.com"
+    },
+    {
+      "id": "std-1002",
+      "fullName": "Faadumo Xasan Nuur",
+      "class": "Fasalka 1aad (Grade 1)",
+      "gender": "female",
+      "guardianPhone": "+252615445566",
+      "guardianName": "Xasan Nuur",
+      "status": "active",
+      "createdAt": "2026-09-01",
+      "schoolId": "admin@dugsipro.com"
+    }
+  ],
+  "attendance": [
+    {
+      "schoolId": "admin@dugsipro.com",
+      "date": "2026-09-20",
+      "studentId": "std-1001",
+      "status": "present",
+      "timestamp": "2026-09-20T08:00:00.000Z",
+      "sessionType": "morning"
+    },
+    {
+      "schoolId": "admin@dugsipro.com",
+      "date": "2026-09-20",
+      "studentId": "std-1002",
+      "status": "present",
+      "timestamp": "2026-09-20T08:00:00.000Z",
+      "sessionType": "morning"
+    }
+  ],
+  "fees": [
+    {
+      "id": "fee-1",
+      "studentId": "std-1001",
+      "month": "September",
+      "year": 2026,
+      "amount": 50,
+      "paidAmount": 50,
+      "status": "paid",
+      "schoolId": "admin@dugsipro.com"
+    }
+  ],
+  "classes": [
+    {
+      "id": "cls-1",
+      "schoolId": "admin@dugsipro.com",
+      "className": "Fasalka 1aad (Grade 1)",
+      "teacherName": "Macallin Cabdiraxmaan",
+      "roomNumber": "101",
+      "description": "Fasalka koowaad ee dugsiga hoose",
+      "createdAt": "2026-09-01"
+    }
+  ],
+  "subjects": [
+    {
+      "id": "sub-1",
+      "schoolId": "admin@dugsipro.com",
+      "subjectName": "Xisaab (Mathematics)",
+      "subjectCode": "MATH-1",
+      "className": "Fasalka 1aad (Grade 1)",
+      "teacherName": "Macallin Cabdiraxmaan",
+      "createdAt": "2026-09-01"
+    }
+  ],
+  "examScores": [],
+  "settings": {
+    "admin@dugsipro.com": {
+      "schoolName": "Dugsiga Pro 2026",
+      "currency": "USD",
+      "feeAmount": 50,
+      "systemTheme": "light"
+    }
+  },
+  "feeStructures": [
+    {
+      "id": "fs-1",
+      "schoolId": "admin@dugsipro.com",
+      "name": "Lacagta Bishan (Monthly Tuition)",
+      "category": "Monthly Tuition",
+      "amount": 50,
+      "className": "All Classes",
+      "academicYear": "2026-2027",
+      "term": "All Terms",
+      "description": "Fiiga caadiga ah ee bishii arday kasta",
+      "createdAt": "2026-09-01"
+    }
+  ],
+  "invoices": [],
+  "payments": [],
+  "expenses": [],
+  "income": [],
+  "budgets": [],
+  "payroll": [],
+  "discounts": [],
+  "refunds": [],
+  "teachers": [],
+  "staff": [],
+  "guardians": [],
+  "staffAttendance": [],
+  "timetable": [],
+  "admissions": [],
+  "announcements": [],
+  "libraryBooks": [],
+  "libraryLoans": [],
+  "inventory": [],
+  "documents": [],
+  "notifications": []
+}

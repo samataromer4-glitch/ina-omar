@@ -18,10 +18,10 @@ interface FinancialReportsModuleProps {
   stats: any;
   pnlData: any;
   cashFlowData: any;
-  invoices: any[];
-  expenses: any[];
-  incomeList: any[];
-  payroll: any[];
+  invoices?: any[];
+  expenses?: any[];
+  incomeList?: any[];
+  payroll?: any[];
   currency: string;
   schoolName: string;
 }
@@ -30,10 +30,10 @@ export const FinancialReportsModule: React.FC<FinancialReportsModuleProps> = ({
   stats,
   pnlData,
   cashFlowData,
-  invoices,
-  expenses,
-  incomeList,
-  payroll,
+  invoices = [],
+  expenses = [],
+  incomeList = [],
+  payroll = [],
   currency,
   schoolName
 }) => {

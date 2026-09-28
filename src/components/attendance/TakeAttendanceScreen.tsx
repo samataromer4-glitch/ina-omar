@@ -32,9 +32,9 @@ interface TakeAttendanceScreenProps {
 
 export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
   user,
-  students,
-  classes,
-  attendance,
+  students = [],
+  classes = [],
+  attendance = [],
   initialClass,
   initialDate,
   initialSession,
@@ -47,18 +47,19 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
 
   // Accessible classes for teacher or all for admin
   const accessibleClasses = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return classes.filter(c => user.assignedClasses?.includes(c.className));
+    const list = classes || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(c => user.assignedClasses?.includes(c.className));
     }
-    return classes;
+    return list;
   }, [user, classes]);
 
   // Command bar selection state
   const [selectedClass, setSelectedClass] = useState<string>(() => {
-    if (initialClass && accessibleClasses.some(c => c.className === initialClass)) {
+    if (initialClass && (accessibleClasses || []).some(c => c.className === initialClass)) {
       return initialClass;
     }
-    return accessibleClasses[0]?.className || classes[0]?.className || "";
+    return (accessibleClasses || [])[0]?.className || (classes || [])[0]?.className || "";
   });
 
   const [selectedDate, setSelectedDate] = useState<string>(
@@ -77,7 +78,7 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
   // Students in selected class
   const classStudents = useMemo(() => {
     if (!selectedClass) return [];
-    return students.filter(s => s.class === selectedClass && s.status !== "archived");
+    return (students || []).filter(s => s && s.class === selectedClass && s.status !== "archived");
   }, [students, selectedClass]);
 
   // Local draft status map: studentId -> AttendanceStatus
@@ -94,14 +95,14 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
 
   // Initialize draft statuses from existing attendance records when class, date, or session changes
   useEffect(() => {
-    const existingForDay = attendance.filter(
-      a => a.date === selectedDate && (a.sessionType || "before_break") === selectedSession
+    const existingForDay = (attendance || []).filter(
+      a => a && a.date === selectedDate && (a.sessionType || "before_break") === selectedSession
     );
     const existingMap = new Map<string, AttendanceStatus>();
     existingForDay.forEach(r => existingMap.set(r.studentId, normalizeStatus(r.status)));
 
     const initialMap: Record<string, AttendanceStatus> = {};
-    classStudents.forEach(st => {
+    (classStudents || []).forEach(st => {
       if (existingMap.has(st.id)) {
         initialMap[st.id] = existingMap.get(st.id)!;
       }
@@ -188,7 +189,7 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
     if (classStudents.length === 0) return;
     setIsSaving(true);
     try {
-      const recordsToSave = classStudents.map(st => ({
+      const recordsToSave = (classStudents || []).map(st => ({
         studentId: st.id,
         status: draftStatuses[st.id] || ("Present" as AttendanceStatus)
       }));
@@ -345,7 +346,7 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
               aria-label="Select class"
               className="w-full bg-[#1c1c1c] border border-[#2e2e2e] rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-hidden focus:border-[#7c3aed] cursor-pointer"
             >
-              {accessibleClasses.map(cls => (
+              {(accessibleClasses || []).map(cls => (
                 <option key={cls.id} value={cls.className} className="bg-[#1c1c1c] text-white">
                   {cls.className}
                 </option>
@@ -364,7 +365,7 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
               aria-label="Select session"
               className="w-full bg-[#1c1c1c] border border-[#2e2e2e] rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-hidden focus:border-[#7c3aed] cursor-pointer"
             >
-              {sessions.map(s => (
+              {(sessions || []).map(s => (
                 <option key={s.id} value={s.id} className="bg-[#1c1c1c] text-white">
                   {s.somaliName} ({s.name})
                 </option>
@@ -495,7 +496,7 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
             </p>
           </div>
         ) : (
-          filteredStudents.map(student => {
+          (filteredStudents || []).map(student => {
             const currentStatus = draftStatuses[student.id];
 
             return (
@@ -513,8 +514,9 @@ export const TakeAttendanceScreen: React.FC<TakeAttendanceScreenProps> = ({
                     />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-[#242424] border border-[#333333] flex items-center justify-center text-xs font-bold text-[#e5e5e5] shrink-0">
-                      {student.fullName
+                      {(student.fullName || "")
                         .split(" ")
+                        .filter(Boolean)
                         .map(n => n[0])
                         .slice(0, 2)
                         .join("")}

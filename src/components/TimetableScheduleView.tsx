@@ -18,10 +18,10 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 interface TimetableScheduleViewProps {
-  timetable: TimetableSlot[];
-  classes: SchoolClass[];
-  teachers: Teacher[];
-  subjects: SchoolSubject[];
+  timetable?: TimetableSlot[];
+  classes?: SchoolClass[];
+  teachers?: Teacher[];
+  subjects?: SchoolSubject[];
   onAddSlot: (slotData: any) => Promise<void>;
   onDeleteSlot: (id: string) => Promise<void>;
   theme: 'light' | 'dark';
@@ -31,10 +31,10 @@ interface TimetableScheduleViewProps {
 const DAYS_OF_WEEK = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday'];
 
 export default function TimetableScheduleView({
-  timetable,
-  classes,
-  teachers,
-  subjects,
+  timetable = [],
+  classes = [],
+  teachers = [],
+  subjects = [],
   onAddSlot,
   onDeleteSlot,
   showToast = () => {}
@@ -46,10 +46,10 @@ export default function TimetableScheduleView({
 
   const [form, setForm] = useState({
     day: 'Saturday' as any,
-    className: classes[0]?.className || '',
-    teacherName: teachers[0]?.name || '',
-    subjectName: subjects[0]?.subjectName || '',
-    roomNumber: classes[0]?.roomNumber || 'Room 1',
+    className: classes?.[0]?.className || '',
+    teacherName: teachers?.[0]?.name || '',
+    subjectName: subjects?.[0]?.subjectName || '',
+    roomNumber: classes?.[0]?.roomNumber || 'Room 1',
     startTime: '08:00',
     endTime: '08:45',
     academicYear: '2025/2026',
@@ -162,7 +162,7 @@ export default function TimetableScheduleView({
             className="bg-[#0a0a0a] border border-[#ffffff10] text-xs text-[#f5f5f5] rounded-sm px-3 py-1.5 focus:outline-none focus:border-[#7c3aed]"
           >
             <option value="All">Dhammaan Fasallada</option>
-            {classes.map(c => (
+            {(classes || []).map(c => (
               <option key={c.id} value={c.className}>{c.className}</option>
             ))}
           </select>
@@ -176,7 +176,7 @@ export default function TimetableScheduleView({
             className="bg-[#0a0a0a] border border-[#ffffff10] text-xs text-[#f5f5f5] rounded-sm px-3 py-1.5 focus:outline-none focus:border-[#7c3aed]"
           >
             <option value="All">Dhammaan Macallimiinta</option>
-            {teachers.map(t => (
+            {(teachers || []).map(t => (
               <option key={t.id} value={t.name}>{t.name}</option>
             ))}
           </select>
@@ -302,7 +302,7 @@ export default function TimetableScheduleView({
                       onChange={e => setForm({ ...form, className: e.target.value })}
                       className="w-full bg-[#0a0a0a] border border-[#ffffff10] rounded-sm px-3 py-2 text-[#f5f5f5] focus:outline-none focus:border-[#7c3aed]"
                     >
-                      {classes.map(c => (
+                      {(classes || []).map(c => (
                         <option key={c.id} value={c.className}>{c.className}</option>
                       ))}
                     </select>
@@ -315,7 +315,7 @@ export default function TimetableScheduleView({
                       onChange={e => setForm({ ...form, subjectName: e.target.value })}
                       className="w-full bg-[#0a0a0a] border border-[#ffffff10] rounded-sm px-3 py-2 text-[#f5f5f5] focus:outline-none focus:border-[#7c3aed]"
                     >
-                      {subjects.map(s => (
+                      {(subjects || []).map(s => (
                         <option key={s.id} value={s.subjectName}>{s.subjectName}</option>
                       ))}
                     </select>
@@ -328,7 +328,7 @@ export default function TimetableScheduleView({
                       onChange={e => setForm({ ...form, teacherName: e.target.value })}
                       className="w-full bg-[#0a0a0a] border border-[#ffffff10] rounded-sm px-3 py-2 text-[#f5f5f5] focus:outline-none focus:border-[#7c3aed]"
                     >
-                      {teachers.map(t => (
+                      {(teachers || []).map(t => (
                         <option key={t.id} value={t.name}>{t.name} ({t.specialization || 'Teacher'})</option>
                       ))}
                     </select>

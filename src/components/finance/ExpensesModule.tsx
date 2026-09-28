@@ -17,7 +17,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface ExpensesModuleProps {
-  expenses: ExpenseRecord[];
+  expenses?: ExpenseRecord[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -43,7 +43,7 @@ const EXPENSE_CATEGORIES = [
 ];
 
 export const ExpensesModule: React.FC<ExpensesModuleProps> = ({
-  expenses,
+  expenses = [],
   currency,
   schoolName,
   onRefresh,

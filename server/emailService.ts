@@ -30,9 +30,6 @@ function getEmailTransporter(): nodemailer.Transporter | null {
       auth: {
         user,
         pass
-      },
-      tls: {
-        rejectUnauthorized: false
       }
     });
     return cachedTransporter;

@@ -13,8 +13,8 @@ interface SubjectsViewProps {
 }
 
 export default function SubjectsView({
-  subjects,
-  classes,
+  subjects = [],
+  classes = [],
   onAddSubject,
   onUpdateSubject,
   onDeleteSubject,
@@ -39,7 +39,7 @@ export default function SubjectsView({
     setForm({
       subjectName: '',
       subjectCode: '',
-      className: classes.length > 0 ? classes[0].className : '',
+      className: (classes || []).length > 0 ? classes[0].className : '',
       teacherName: ''
     });
     setShowModal(true);
@@ -146,7 +146,7 @@ export default function SubjectsView({
             className="w-full px-4 py-3.5 rounded-xl border border-[#ffffff10] bg-[#121212]/40 backdrop-blur-md text-xs uppercase tracking-widest text-[#e5e5e5] focus:outline-none focus:border-[#7c3aed]/50"
           >
             <option value="All">Dhamaan Fasallada</option>
-            {classes.map(c => (
+            {(classes || []).map(c => (
               <option key={c.id} value={c.className}>{c.className}</option>
             ))}
           </select>
@@ -290,7 +290,7 @@ export default function SubjectsView({
                       className="w-full px-4 py-3 rounded-xl border border-[#ffffff10] bg-[#121212]/80 text-xs text-[#e5e5e5] focus:outline-none focus:border-[#7c3aed] transition-colors"
                       required
                     >
-                      {classes.map(c => (
+                      {(classes || []).map(c => (
                         <option key={c.id} value={c.className}>{c.className}</option>
                       ))}
                     </select>

@@ -17,9 +17,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { LibraryBook, LibraryLoan, Student, Teacher } from '../types';
 
 interface LibraryViewProps {
-  books: LibraryBook[];
-  loans: LibraryLoan[];
-  students: Student[];
+  books?: LibraryBook[];
+  loans?: LibraryLoan[];
+  students?: Student[];
   teachers?: Teacher[];
   onAddBook: (data: any) => Promise<void>;
   onUpdateBook: (id: string, data: any) => Promise<void>;
@@ -31,9 +31,9 @@ interface LibraryViewProps {
 }
 
 export default function LibraryView({
-  books,
-  loans,
-  students,
+  books = [],
+  loans = [],
+  students = [],
   teachers = [],
   onAddBook,
   onUpdateBook,
@@ -58,10 +58,10 @@ export default function LibraryView({
   });
 
   const [loanForm, setLoanForm] = useState({
-    bookId: books[0]?.id || '',
+    bookId: books?.[0]?.id || '',
     borrowerType: 'Student' as 'Student' | 'Teacher' | 'Staff',
-    borrowerName: students[0]?.fullName || '',
-    borrowerId: students[0]?.id || '',
+    borrowerName: students?.[0]?.fullName || '',
+    borrowerId: students?.[0]?.id || '',
     dueDate: new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0] // 14 days
   });
 
@@ -125,20 +125,20 @@ export default function LibraryView({
   };
 
   // Filtered lists
-  const filteredBooks = books.filter(b => 
+  const filteredBooks = (books || []).filter(b => 
     b.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     b.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (b.category && b.category.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const filteredLoans = loans.filter(l => 
+  const filteredLoans = (loans || []).filter(l => 
     l.bookTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
     l.borrowerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const totalCopies = books.reduce((sum, b) => sum + (Number(b.totalCopies) || 0), 0);
-  const totalAvailable = books.reduce((sum, b) => sum + (Number(b.availableCopies) || 0), 0);
-  const activeBorrowed = loans.filter(l => l.status === 'Borrowed').length;
+  const totalCopies = (books || []).reduce((sum, b) => sum + (Number(b.totalCopies) || 0), 0);
+  const totalAvailable = (books || []).reduce((sum, b) => sum + (Number(b.availableCopies) || 0), 0);
+  const activeBorrowed = (loans || []).filter(l => l.status === 'Borrowed').length;
 
   return (
     <div className="space-y-6">
@@ -530,7 +530,7 @@ export default function LibraryView({
                     onChange={e => setLoanForm({ ...loanForm, bookId: e.target.value })}
                     className="w-full bg-[#0a0a0a] border border-[#ffffff10] rounded-sm px-3 py-2 text-[#f5f5f5] focus:outline-none focus:border-[#7c3aed]"
                   >
-                    {books.map(b => (
+                    {(books || []).map(b => (
                       <option key={b.id} value={b.id} disabled={b.availableCopies <= 0}>
                         {b.title} ({b.availableCopies} available)
                       </option>

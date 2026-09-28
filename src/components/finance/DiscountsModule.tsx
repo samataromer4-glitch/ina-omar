@@ -19,16 +19,16 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface DiscountsModuleProps {
-  discounts: DiscountRecord[];
-  invoices: Invoice[];
+  discounts?: DiscountRecord[];
+  invoices?: Invoice[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
 }
 
 export const DiscountsModule: React.FC<DiscountsModuleProps> = ({
-  discounts,
-  invoices,
+  discounts = [],
+  invoices = [],
   currency,
   schoolName,
   onRefresh
@@ -50,7 +50,7 @@ export const DiscountsModule: React.FC<DiscountsModuleProps> = ({
 
   // Active eligible invoices (balance > 0)
   const eligibleInvoices = useMemo(() => {
-    return invoices.filter((i) => i.balance > 0 && i.status !== "Cancelled");
+    return (invoices || []).filter((i) => i.balance > 0 && i.status !== "Cancelled");
   }, [invoices]);
 
   const selectedInvoice = useMemo(() => {

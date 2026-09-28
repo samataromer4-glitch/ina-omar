@@ -15,18 +15,18 @@ import type { PayrollRecord } from "../../types";
 import { formatMoney, exportToExcel, generatePayslipPDF } from "./financeUtils";
 
 interface PayrollModuleProps {
-  payroll: PayrollRecord[];
-  teachers: any[];
-  staff: any[];
+  payroll?: PayrollRecord[];
+  teachers?: any[];
+  staff?: any[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
 }
 
 export const PayrollModule: React.FC<PayrollModuleProps> = ({
-  payroll,
-  teachers,
-  staff,
+  payroll = [],
+  teachers = [],
+  staff = [],
   currency,
   schoolName,
   onRefresh
@@ -53,8 +53,8 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({
   });
 
   const allEmployees = [
-    ...teachers.map((t) => ({ id: t.id, name: t.fullName || t.name, type: "Teacher", role: t.specialization || "Macallin" })),
-    ...staff.map((s) => ({ id: s.id, name: s.fullName || s.name, type: "Staff", role: s.role || "Shaqaale" }))
+    ...(teachers || []).map((t) => ({ id: t.id, name: t.fullName || t.name, type: "Teacher", role: t.specialization || "Macallin" })),
+    ...(staff || []).map((s) => ({ id: s.id, name: s.fullName || s.name, type: "Staff", role: s.role || "Shaqaale" }))
   ];
 
   const handleSelectEmployee = (id: string) => {
@@ -73,7 +73,7 @@ export const PayrollModule: React.FC<PayrollModuleProps> = ({
   const grossSalary = Number(form.basicSalary || 0) + Number(form.allowances || 0);
   const netSalary = Math.max(0, grossSalary - Number(form.deductions || 0));
 
-  const filteredPayroll = payroll.filter((p) => {
+  const filteredPayroll = (payroll || []).filter((p) => {
     if (statusFilter !== "All" && p.status !== statusFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();

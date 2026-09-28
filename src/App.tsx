@@ -112,6 +112,7 @@ import { TeacherActivationView } from './components/TeacherActivationView';
 import { TeacherDashboardView } from './components/TeacherDashboardView';
 import { OfflineSyncBadge } from './components/OfflineSyncBadge';
 import { PWAInstallButton } from './components/PWAInstallButton';
+import { GlobalHeaderSearch } from './components/GlobalHeaderSearch';
 import { enqueueOfflineAction } from './utils/offlineSync';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -895,8 +896,9 @@ export default function App() {
         });
         const data = await res.json();
         if (res.ok) {
-          localStorage.setItem('dugsiga_auth', JSON.stringify(data.user));
-          setUser(data.user);
+          const userWithToken = { ...data.user, token: data.token || data.user?.token };
+          localStorage.setItem('dugsiga_auth', JSON.stringify(userWithToken));
+          setUser(userWithToken);
           setCurrentRoute('dashboard');
           window.history.pushState({}, '', '/dashboard');
           showToast("Ku soo dhowow Dugsiga Pro!", "success");
@@ -911,10 +913,10 @@ export default function App() {
         });
         const data = await res.json();
         if (res.ok) {
-          // Auto-login after successful signup
-          const userObj = { email };
-          localStorage.setItem('dugsiga_auth', JSON.stringify(userObj));
-          setUser(userObj);
+          // Auto-login after successful signup with server-generated token
+          const userWithToken = { ...data.user, token: data.token || data.user?.token };
+          localStorage.setItem('dugsiga_auth', JSON.stringify(userWithToken));
+          setUser(userWithToken);
           setCurrentRoute('dashboard');
           window.history.pushState({}, '', '/dashboard');
           showToast("Diiwaangelintu way guuleysatay! Ku soo dhowow Dugsiga Pro!", "success");
@@ -2500,7 +2502,7 @@ export default function App() {
 
   let totalCollectedFees = 0;
   let totalPendingFees = 0;
-  fees.forEach(f => {
+  (fees || []).forEach(f => {
     totalCollectedFees += Number(f.paidAmount || 0);
     totalPendingFees += Math.max(0, Number(f.amount || 0) - Number(f.paidAmount || 0));
   });
@@ -2508,7 +2510,7 @@ export default function App() {
   // Prepare chart datasets
   const monthsList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const barChartData = monthsList.slice(0, 6).map(monthName => {
-    const monthFees = fees.filter(f => f.month === monthName);
+    const monthFees = (fees || []).filter(f => f && f.month === monthName);
     let collected = 0;
     let pending = 0;
     monthFees.forEach(f => {
@@ -2523,7 +2525,7 @@ export default function App() {
   });
 
   const getTodayAttendanceStats = () => {
-    const todayRecords = attendance.filter(a => a.date === attendanceDate);
+    const todayRecords = (attendance || []).filter(a => a && a.date === attendanceDate);
     let present = 0;
     let absent = 0;
     let late = 0;
@@ -2547,7 +2549,7 @@ export default function App() {
     ].filter(v => v.value > 0);
   };
 
-  const attendanceChartData = getTodayAttendanceStats();
+  const attendanceChartData = getTodayAttendanceStats() || [];
 
   // Export File Generators
   const downloadJSON = (data: any, filename: string) => {
@@ -3335,26 +3337,43 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0a]">
-        {/* Top Header Bar */}
-        <header className="sticky top-0 z-30 h-16 bg-[#0a0a0a]/80 backdrop-blur-md border-b border-[#ffffff10] px-6 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        {/* Top Header Bar with Global Search */}
+        <header className="sticky top-0 z-30 h-16 bg-[#0a0a0a]/80 backdrop-blur-md border-b border-[#ffffff10] px-4 sm:px-6 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 shrink-0">
             <button className="md:hidden p-2 rounded-sm border border-[#ffffff10] text-[#e5e5e5] hover:bg-[#ffffff05]" onClick={() => setSidebarOpen(true)}>
               <Menu className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Global Header Search across students, teachers, and staff */}
+          {user.role === 'admin' ? (
+            <div className="flex-1 max-w-xl mx-2 sm:mx-4">
+              <GlobalHeaderSearch
+                students={students}
+                teachers={teachers}
+                staff={staff}
+                onSelectStudent={(student) => {
+                  setSelectedStudentForProfile(student);
+                }}
+                onNavigateTab={(tab) => handleNavigateTab(tab)}
+              />
+            </div>
+          ) : (
+            <div className="flex-1" />
+          )}
+
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             <PWAInstallButton />
             <OfflineSyncBadge />
             <button
               onClick={() => navigate('landing')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-[#ffffff10] text-xs font-medium text-[#94a3b8] hover:text-white hover:bg-[#ffffff05] transition-colors"
+              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-sm border border-[#ffffff10] text-xs font-medium text-[#94a3b8] hover:text-white hover:bg-[#ffffff05] transition-colors"
               title="View Public Website"
             >
               <Sparkles className="w-3.5 h-3.5 text-[#a78bfa]" />
               <span className="hidden sm:inline">Public Website</span>
             </button>
-            <div className="text-[10px] font-mono tracking-widest uppercase text-[#737373] bg-[#ffffff02] px-3 py-1.5 rounded-sm border border-[#ffffff05]">
+            <div className="hidden sm:block text-[10px] font-mono tracking-widest uppercase text-[#737373] bg-[#ffffff02] px-3 py-1.5 rounded-sm border border-[#ffffff05]">
               UTC: {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
             </div>
           </div>
@@ -3579,11 +3598,11 @@ export default function App() {
                       <h3 className="font-serif italic text-lg text-[#f5f5f5]">Latest Fee Payments</h3>
                       <p className="text-[10px] uppercase tracking-widest text-[#737373] mt-0.5">Biilasha ugu dambeeyey ee la cusbooneysiiyey</p>
                       <div className="mt-4 divide-y divide-[#ffffff10] max-h-80 overflow-y-auto pr-1">
-                        {fees.length === 0 ? (
+                        {(fees || []).length === 0 ? (
                           <div className="py-8 text-center text-xs text-[#737373]">Wax biilal ah oo diiwaangashan ma jiraan</div>
                         ) : (
-                          fees.slice(0, 5).map(f => {
-                            const sName = students.find(s => s.id === f.studentId)?.fullName || 'Unknown Student';
+                          (fees || []).slice(0, 5).map(f => {
+                            const sName = (students || []).find(s => s && s.id === f.studentId)?.fullName || 'Unknown Student';
                             return (
                               <div key={f.id} className="py-3 flex items-center justify-between text-xs">
                                 <div>
@@ -3610,10 +3629,10 @@ export default function App() {
                       <h3 className="font-serif italic text-lg text-[#f5f5f5]">Ardayda dhawaan la diiwaangeliyey</h3>
                       <p className="text-[10px] uppercase tracking-widest text-[#737373] mt-0.5">Ardaydii u dambaysay ee lagu daray nidaamka</p>
                       <div className="mt-4 divide-y divide-[#ffffff10] max-h-80 overflow-y-auto pr-1">
-                        {students.length === 0 ? (
+                        {(students || []).length === 0 ? (
                           <div className="py-8 text-center text-xs text-[#737373]">Wax arday ah oo diiwaangashan ma jiraan</div>
                         ) : (
-                          students.slice(0, 5).map(s => (
+                          (students || []).slice(0, 5).map(s => (
                             <div key={s.id} className="py-3 flex items-center justify-between text-xs">
                               <div>
                                 <p className="font-bold text-[#e5e5e5]">{s.fullName}</p>
@@ -4451,9 +4470,9 @@ export default function App() {
             <p className="text-[10px] uppercase tracking-widest text-[#737373] mb-6">Taariikhda lacag bixinta iyo dhaqdhaqaaqa biilka: #{showHistoryModal.id.substring(0,8)}</p>
 
             <div className="space-y-4 max-h-80 overflow-y-auto pr-1">
-              {showHistoryModal.history && showHistoryModal.history.length > 0 ? (
+              {(showHistoryModal.history || []).length > 0 ? (
                 <div className="relative border-l border-[#ffffff10] pl-4 space-y-4 text-xs font-mono ml-2">
-                  {showHistoryModal.history.map((hist, index) => (
+                  {(showHistoryModal.history || []).map((hist, index) => (
                     <div key={index} className="relative">
                       <span className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-[#7c3aed] border-2 border-[#0a0a0a]"></span>
                       <div className="p-3.5 rounded-sm bg-[#0a0a0a] border border-[#ffffff10] space-y-1">

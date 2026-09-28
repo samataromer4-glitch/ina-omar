@@ -92,7 +92,7 @@ export default function StudentProfileModal({
     autoTable(doc, {
       startY: 42,
       head: [['Exam Name', 'Subject', 'Score', 'Max', 'Grade']],
-      body: studentScores.map(s => [
+      body: (studentScores || []).map(s => [
         s.examName || 'Term Exam',
         s.subjectName || 'Subject',
         s.marksObtained,
@@ -104,7 +104,7 @@ export default function StudentProfileModal({
     const finalY = (doc as any).lastAutoTable ? (doc as any).lastAutoTable.finalY + 10 : 80;
     doc.text(`Xaaladda Lacagta: Wadarta: ${currency} ${totalBilled} | La Bixiyey: ${currency} ${totalPaid} | Baaqiga: ${currency} ${balanceDue}`, 14, finalY);
 
-    doc.save(`Warbixinta_${student.fullName.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Warbixinta_${(student.fullName || 'Student').replace(/\s+/g, '_')}.pdf`);
   };
 
   return (
@@ -142,7 +142,7 @@ export default function StudentProfileModal({
               {student.photo ? (
                 <img src={student.photo} alt={student.fullName} className="w-full h-full object-cover" />
               ) : (
-                student.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+                (student.fullName || '').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase()
               )}
             </div>
 
@@ -491,7 +491,7 @@ export default function StudentProfileModal({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#ffffff05] text-[#d4d4d4]">
-                      {studentScores.map(score => {
+                      {(studentScores || []).map(score => {
                         const grade = score.grade || (score.marksObtained >= 80 ? 'A' : score.marksObtained >= 65 ? 'B' : score.marksObtained >= 50 ? 'C' : 'F');
                         return (
                           <tr key={score.id}>
@@ -534,7 +534,7 @@ export default function StudentProfileModal({
               </div>
 
               <div className="max-h-48 overflow-y-auto space-y-1">
-                {studentAttendance.map((att, idx) => (
+                {(studentAttendance || []).map((att, idx) => (
                   <div key={idx} className="flex items-center justify-between p-2 bg-[#0a0a0a] border border-[#ffffff05] rounded-sm text-xs">
                     <span className="font-mono text-[#a3a3a3]">{att.date}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-sm font-semibold ${
@@ -569,7 +569,7 @@ export default function StudentProfileModal({
               </div>
 
               <div className="max-h-48 overflow-y-auto space-y-1">
-                {studentFees.map(fee => (
+                {(studentFees || []).map(fee => (
                   <div key={fee.id} className="flex items-center justify-between p-2.5 bg-[#0a0a0a] border border-[#ffffff05] rounded-sm text-xs">
                     <div>
                       <div className="font-semibold text-[#f5f5f5]">{fee.month} {fee.year} (Fee)</div>

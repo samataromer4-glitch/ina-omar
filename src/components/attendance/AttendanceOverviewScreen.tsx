@@ -28,9 +28,9 @@ interface AttendanceOverviewScreenProps {
 
 export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> = ({
   user,
-  students,
-  classes,
-  attendance,
+  students = [],
+  classes = [],
+  attendance = [],
   todayDate,
   onNavigateToTake,
   onNavigateToAlerts,
@@ -41,23 +41,25 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
 
   // Accessible students & classes based on teacher assignment or admin
   const accessibleClasses = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return classes.filter(c => user.assignedClasses?.includes(c.className));
+    const list = classes || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(c => user.assignedClasses?.includes(c.className));
     }
-    return classes;
+    return list;
   }, [user, classes]);
 
   const accessibleStudents = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return students.filter(s => user.assignedClasses?.includes(s.class));
+    const list = students || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(s => user.assignedClasses?.includes(s.class));
     }
-    return students;
+    return list;
   }, [user, students]);
 
   // Today's records for accessible students
   const dateRecords = useMemo(() => {
-    const studentIds = new Set(accessibleStudents.map(s => s.id));
-    return attendance.filter(a => a.date === selectedDate && studentIds.has(a.studentId));
+    const studentIds = new Set((accessibleStudents || []).map(s => s.id));
+    return (attendance || []).filter(a => a && a.date === selectedDate && studentIds.has(a.studentId));
   }, [attendance, selectedDate, accessibleStudents]);
 
   // Primary summary stats
@@ -67,7 +69,7 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
     let late = 0;
     let leave = 0;
 
-    dateRecords.forEach(r => {
+    (dateRecords || []).forEach(r => {
       const st = normalizeStatus(r.status);
       if (st === "Present") present++;
       else if (st === "Absent") absent++;
@@ -75,8 +77,8 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
       else if (st === "Leave") leave++;
     });
 
-    const totalStudents = accessibleStudents.length;
-    const totalMarked = dateRecords.length;
+    const totalStudents = (accessibleStudents || []).length;
+    const totalMarked = (dateRecords || []).length;
     const rate = totalMarked > 0
       ? Math.round(((present + (late * 0.5)) / totalMarked) * 100)
       : (totalStudents > 0 ? 0 : 100);
@@ -94,10 +96,10 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
 
   // Class completion tracking
   const classProgress = useMemo(() => {
-    return accessibleClasses.map(cls => {
-      const clsStudents = accessibleStudents.filter(s => s.class === cls.className);
+    return (accessibleClasses || []).map(cls => {
+      const clsStudents = (accessibleStudents || []).filter(s => s && s.class === cls.className);
       const studentIds = new Set(clsStudents.map(s => s.id));
-      const markedCount = dateRecords.filter(r => studentIds.has(r.studentId)).length;
+      const markedCount = (dateRecords || []).filter(r => studentIds.has(r.studentId)).length;
       const total = clsStudents.length;
 
       let status: "complete" | "in_progress" | "not_started" = "not_started";
@@ -207,7 +209,7 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
       d.setDate(d.getDate() - i);
       const iso = d.toISOString().split("T")[0];
 
-      const dayRecords = attendance.filter(a => a.date === iso);
+      const dayRecords = (attendance || []).filter(a => a && a.date === iso);
       let p = 0;
       let l = 0;
       dayRecords.forEach(r => {
@@ -232,12 +234,12 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
 
   // Recent attendance activity logs
   const recentActivities = useMemo(() => {
-    const sorted = [...attendance]
-      .sort((a, b) => (b.timestamp || b.date).localeCompare(a.timestamp || a.date))
+    const sorted = [...(attendance || [])]
+      .sort((a, b) => (b.timestamp || b.date || "").localeCompare(a.timestamp || a.date || ""))
       .slice(0, 5);
 
     return sorted.map((rec, idx) => {
-      const st = students.find(s => s.id === rec.studentId);
+      const st = (students || []).find(s => s && s.id === rec.studentId);
       const timeStr = rec.timestamp
         ? new Date(rec.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         : "10:15 AM";
@@ -390,12 +392,12 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
           </div>
 
           <div className="bg-[#141414] border border-[#262626] rounded-xl divide-y divide-[#262626] overflow-hidden">
-            {classProgress.length === 0 ? (
+            {(classProgress || []).length === 0 ? (
               <div className="p-6 text-center text-xs text-[#737373]">
                 No classes registered in the system.
               </div>
             ) : (
-              classProgress.map(item => (
+              (classProgress || []).map(item => (
                 <div
                   key={item.className}
                   onClick={() => onNavigateToTake(item.className)}
@@ -443,13 +445,13 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
           </div>
 
           <div className="space-y-2.5">
-            {attentionItems.length === 0 ? (
+            {(attentionItems || []).length === 0 ? (
               <div className="bg-[#141414] border border-[#262626] rounded-xl p-6 text-center text-xs text-emerald-400 flex items-center justify-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                 All classes and students are in good standing today.
               </div>
             ) : (
-              attentionItems.map(item => (
+              (attentionItems || []).map(item => (
                 <div
                   key={item.id}
                   className="bg-[#141414] border border-[#262626] rounded-xl p-4 flex items-center justify-between gap-3 hover:border-[#383838] transition-colors"
@@ -511,7 +513,7 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
 
         <div className="bg-[#141414] border border-[#262626] rounded-xl p-5 sm:p-6">
           <div className="h-44 sm:h-52 w-full flex items-end gap-1.5 sm:gap-3 pt-6">
-            {trendData.map((pt, idx) => {
+            {(trendData || []).map((pt, idx) => {
               const heightPercent = Math.max(15, Math.min(100, pt.rate));
               return (
                 <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group relative">
@@ -551,12 +553,12 @@ export const AttendanceOverviewScreen: React.FC<AttendanceOverviewScreenProps> =
         </div>
 
         <div className="bg-[#141414] border border-[#262626] rounded-xl divide-y divide-[#262626] overflow-hidden">
-          {recentActivities.length === 0 ? (
+          {(recentActivities || []).length === 0 ? (
             <div className="p-6 text-center text-xs text-[#737373]">
               No recent attendance logs recorded yet.
             </div>
           ) : (
-            recentActivities.map(act => (
+            (recentActivities || []).map(act => (
               <div key={act.id} className="px-5 py-3.5 flex items-center justify-between text-xs">
                 <div className="space-y-0.5">
                   <div className="font-medium text-white">{act.title}</div>

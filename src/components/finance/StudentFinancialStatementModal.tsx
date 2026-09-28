@@ -335,14 +335,14 @@ export const StudentFinancialStatementModal: React.FC<StudentFinancialStatementM
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#ffffff08] text-[11px] font-mono">
-                      {data.invoices.length === 0 ? (
+                      {(data?.invoices || []).length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-4 py-6 text-center text-[#737373] text-[10px]">
                             Ma jiraan biilal la helay.
                           </td>
                         </tr>
                       ) : (
-                        data.invoices.map((inv: any) => (
+                        (data?.invoices || []).map((inv: any) => (
                           <tr key={inv.id} className="hover:bg-[#ffffff02]">
                             <td className="px-4 py-2.5 font-bold text-[#e5e5e5]">{inv.invoiceNumber}</td>
                             <td className="px-4 py-2.5 text-[#a3a3a3]">{inv.issueDate}</td>
@@ -384,14 +384,14 @@ export const StudentFinancialStatementModal: React.FC<StudentFinancialStatementM
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#ffffff08] text-[11px] font-mono">
-                      {data.payments.length === 0 ? (
+                      {(data?.payments || []).length === 0 ? (
                         <tr>
                           <td colSpan={6} className="px-4 py-6 text-center text-[#737373] text-[10px]">
                             Ma jiraan lacago la qabtay.
                           </td>
                         </tr>
                       ) : (
-                        data.payments.map((p: any) => (
+                        (data?.payments || []).map((p: any) => (
                           <tr key={p.id} className="hover:bg-[#ffffff02]">
                             <td className="px-4 py-2.5 font-bold text-emerald-400">{p.receiptNumber}</td>
                             <td className="px-4 py-2.5 text-[#a3a3a3]">{p.paymentDate}</td>
@@ -426,14 +426,14 @@ export const StudentFinancialStatementModal: React.FC<StudentFinancialStatementM
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#ffffff08] text-[11px] font-mono">
-                          {data.discounts.length === 0 ? (
+                          {(data?.discounts || []).length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-4 py-4 text-center text-[#737373] text-[10px]">
                                 Ma jirto wax qiimo dhimis ah.
                               </td>
                             </tr>
                           ) : (
-                            data.discounts.map((d: any) => (
+                            (data?.discounts || []).map((d: any) => (
                               <tr key={d.id}>
                                 <td className="px-4 py-2.5 text-[#e5e5e5]">{d.invoiceNumber}</td>
                                 <td className="px-4 py-2.5 font-bold text-purple-400">-{formatMoney(d.amount, currency)}</td>
@@ -464,14 +464,14 @@ export const StudentFinancialStatementModal: React.FC<StudentFinancialStatementM
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#ffffff08] text-[11px] font-mono">
-                          {data.refunds.length === 0 ? (
+                          {(data?.refunds || []).length === 0 ? (
                             <tr>
                               <td colSpan={5} className="px-4 py-4 text-center text-[#737373] text-[10px]">
                                 Ma jirto wax lacag ah oo dib loo celiyey.
                               </td>
                             </tr>
                           ) : (
-                            data.refunds.map((r: any) => (
+                            (data?.refunds || []).map((r: any) => (
                               <tr key={r.id}>
                                 <td className="px-4 py-2.5 text-[#e5e5e5]">{r.receiptNumber}</td>
                                 <td className="px-4 py-2.5 font-bold text-rose-400">-{formatMoney(r.refundAmount, currency)}</td>

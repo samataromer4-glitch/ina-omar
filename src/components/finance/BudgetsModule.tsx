@@ -13,7 +13,7 @@ import type { BudgetRecord } from "../../types";
 import { formatMoney, exportToExcel } from "./financeUtils";
 
 interface BudgetsModuleProps {
-  budgets: BudgetRecord[];
+  budgets?: BudgetRecord[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -38,7 +38,7 @@ const BUDGET_CATEGORIES = [
 ];
 
 export const BudgetsModule: React.FC<BudgetsModuleProps> = ({
-  budgets,
+  budgets = [],
   currency,
   schoolName,
   onRefresh

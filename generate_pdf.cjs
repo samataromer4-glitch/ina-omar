@@ -245,9 +245,9 @@ function generateDocumentationPDF() {
       ["SUPABASE_JWKS_URL", "Supabase Auth JWKS Endpoint", "URL-ka xaqiijinta tokens-ka JWT"],
       ["SMTP_HOST", "smtp.gmail.com", "Server-ka loo isticmaalo dirista email-lada"],
       ["SMTP_PORT", "587 (TLS) ama 465 (SSL)", "Port-ka ammaan ah ee SMTP email"],
-      ["SMTP_USER", "som216469@gmail.com", "Cinwaanka email-ka diraha rasmiga ah"],
-      ["SMTP_PASS", "sgnxblsftqlofisf (Google App Password)", "Furaha sirta ah ee Google App Password ee email-ka"],
-      ["SMTP_FROM", "som216469@gmail.com", "Cinwaanka ka muuqanaya sanduuqa email-ka qaataha"]
+      ["SMTP_USER", "your_email@gmail.com", "Cinwaanka email-ka diraha rasmiga ah"],
+      ["SMTP_PASS", "your_google_app_password", "Furaha sirta ah ee Google App Password ee email-ka"],
+      ["SMTP_FROM", "your_email@gmail.com", "Cinwaanka ka muuqanaya sanduuqa email-ka qaataha"]
     ],
     theme: "striped",
     headStyles: { fillColor: primaryColor, textColor: 255, fontStyle: "bold", fontSize: 7.5 },

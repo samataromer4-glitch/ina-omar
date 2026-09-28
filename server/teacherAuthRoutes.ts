@@ -1,17 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import { sendTeacherInvitationEmail } from "./emailService.js";
-import { generateSecureToken, validatePassword, getAuthenticatedUser } from "./authSession.js";
-
-function simpleHash(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return hash.toString(16);
-}
+import { generateSecureToken, validatePassword, getAuthenticatedUser, hashPassword } from "./authSession.js";
 
 function getBaseAppUrl(req: express.Request): string {
   if (process.env.APP_URL && process.env.APP_URL.startsWith("http")) {
@@ -163,7 +153,7 @@ export function registerTeacherAuthRoutes(
     }
 
     const cleanEmail = (teacher.email || "").trim().toLowerCase();
-    const passwordHash = simpleHash(password);
+    const passwordHash = hashPassword(password);
     const nowIso = new Date().toISOString();
 
     // 1. Update Teacher Record
@@ -236,7 +226,10 @@ export function registerTeacherAuthRoutes(
    */
   app.post("/api/teachers/:id/resend-invitation", async (req, res) => {
     const authUser = getAuthenticatedUser(req, loadLocalDB);
-    if (authUser && authUser.role === "teacher") {
+    if (!authUser) {
+      return res.status(401).json({ error: "Fadlan soo gal (login) marka hore." });
+    }
+    if (authUser.role === "teacher") {
       return res.status(403).json({ error: "Macallinku awood uma laha dib u diridda casuumaadaha." });
     }
 
@@ -308,7 +301,10 @@ export function registerTeacherAuthRoutes(
    */
   app.post("/api/teachers/:id/toggle-status", async (req, res) => {
     const authUser = getAuthenticatedUser(req, loadLocalDB);
-    if (authUser && authUser.role === "teacher") {
+    if (!authUser) {
+      return res.status(401).json({ error: "Fadlan soo gal (login) marka hore." });
+    }
+    if (authUser.role === "teacher") {
       return res.status(403).json({ error: "Macallinku awood uma laha wax ka beddelka xaaladda macallimiinta." });
     }
 

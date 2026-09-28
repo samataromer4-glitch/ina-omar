@@ -37,9 +37,9 @@ interface AttendanceDashboardProps {
 
 export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
   user,
-  students,
-  classes,
-  attendance,
+  students = [],
+  classes = [],
+  attendance = [],
   todayDate,
   currentSession,
   onNavigateSubTab,
@@ -49,24 +49,26 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
 
   // Filter accessible classes for teachers
   const accessibleClasses = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return classes.filter(c => user.assignedClasses?.includes(c.className));
+    const list = classes || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(c => user.assignedClasses?.includes(c.className));
     }
-    return classes;
+    return list;
   }, [user, classes]);
 
   const accessibleStudents = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return students.filter(s => user.assignedClasses?.includes(s.class));
+    const list = students || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(s => user.assignedClasses?.includes(s.class));
     }
-    return students;
+    return list;
   }, [user, students]);
 
   // Today's records for accessible students
   const todayRecords = useMemo(() => {
-    const studentIds = new Set(accessibleStudents.map(s => s.id));
-    return attendance.filter(
-      a => a.date === todayDate && studentIds.has(a.studentId)
+    const studentIds = new Set((accessibleStudents || []).map(s => s.id));
+    return (attendance || []).filter(
+      a => a && a.date === todayDate && studentIds.has(a.studentId)
     );
   }, [attendance, todayDate, accessibleStudents]);
 
@@ -111,10 +113,10 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
 
   // Class completion tracking for today's session
   const classStatusList = useMemo(() => {
-    return accessibleClasses.map(cls => {
-      const classStudents = accessibleStudents.filter(s => s.class === cls.className);
+    return (accessibleClasses || []).map(cls => {
+      const classStudents = (accessibleStudents || []).filter(s => s && s.class === cls.className);
       const studentIds = new Set(classStudents.map(s => s.id));
-      const marked = sessionRecords.filter(r => studentIds.has(r.studentId));
+      const marked = (sessionRecords || []).filter(r => r && studentIds.has(r.studentId));
 
       const isCompleted = classStudents.length > 0 && marked.length >= classStudents.length;
       const isPartially = marked.length > 0 && marked.length < classStudents.length;
@@ -139,25 +141,25 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
     });
   }, [accessibleClasses, accessibleStudents, sessionRecords]);
 
-  const completedClassesCount = classStatusList.filter(c => c.isCompleted).length;
-  const pendingClassesCount = classStatusList.filter(c => !c.isCompleted).length;
+  const completedClassesCount = (classStatusList || []).filter(c => c.isCompleted).length;
+  const pendingClassesCount = (classStatusList || []).filter(c => !c.isCompleted).length;
 
   // Absentees and Late arrivals today
   const todayAbsentees = useMemo(() => {
-    return sessionRecords
+    return (sessionRecords || [])
       .filter(r => normalizeStatus(r.status) === "Absent")
       .map(r => {
-        const student = accessibleStudents.find(s => s.id === r.studentId);
+        const student = (accessibleStudents || []).find(s => s && s.id === r.studentId);
         return { record: r, student };
       })
       .filter(item => Boolean(item.student));
   }, [sessionRecords, accessibleStudents]);
 
   const todayLateArrivals = useMemo(() => {
-    return sessionRecords
+    return (sessionRecords || [])
       .filter(r => normalizeStatus(r.status) === "Late")
       .map(r => {
-        const student = accessibleStudents.find(s => s.id === r.studentId);
+        const student = (accessibleStudents || []).find(s => s && s.id === r.studentId);
         return { record: r, student };
       })
       .filter(item => Boolean(item.student));
@@ -173,10 +175,10 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
       dates.push(d.toISOString().split("T")[0]);
     }
 
-    const studentIds = new Set(accessibleStudents.map(s => s.id));
+    const studentIds = new Set((accessibleStudents || []).map(s => s.id));
 
-    return dates.map(dt => {
-      const recs = attendance.filter(a => a.date === dt && studentIds.has(a.studentId));
+    return (dates || []).map(dt => {
+      const recs = (attendance || []).filter(a => a && a.date === dt && studentIds.has(a.studentId));
       const p = recs.filter(a => normalizeStatus(a.status) === "Present").length;
       const l = recs.filter(a => normalizeStatus(a.status) === "Late").length;
       const total = recs.length;
@@ -394,7 +396,7 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
                 <span>Hambalyo! Dhammaan fasallada xaadirintooda maanta si buuxda ayaa loo gudbiyey.</span>
               </div>
             ) : (
-              classStatusList.filter(c => !c.isCompleted).slice(0, 5).map(cls => (
+              (classStatusList || []).filter(c => !c.isCompleted).slice(0, 5).map(cls => (
                 <div
                   key={cls.className}
                   className="flex items-center justify-between p-3 rounded-sm bg-[#0a0a0a] border border-[#ffffff08] hover:border-[#7c3aed]/30 transition-colors"
@@ -440,17 +442,17 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
               </div>
             </div>
             <span className="text-xs font-mono font-bold text-rose-400 px-2 py-0.5 rounded-xs bg-rose-500/10 border border-rose-500/20">
-              {todayAbsentees.length} Arday
+              {(todayAbsentees || []).length} Arday
             </span>
           </div>
 
           <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-            {todayAbsentees.length === 0 ? (
+            {(todayAbsentees || []).length === 0 ? (
               <div className="p-4 rounded-sm bg-[#0a0a0a] border border-[#ffffff08] text-center text-xs text-[#737373]">
                 Ma jiraan arday maanta maqan oo diiwaangashan.
               </div>
             ) : (
-              todayAbsentees.map(({ student, record }) => (
+              (todayAbsentees || []).map(({ student, record }) => (
                 <div
                   key={student?.id}
                   className="flex items-center justify-between p-2.5 rounded-sm bg-[#0a0a0a] border border-[#ffffff08] hover:border-rose-500/30 transition-colors"
@@ -515,7 +517,7 @@ export const AttendanceDashboard: React.FC<AttendanceDashboardProps> = ({
         </div>
 
         <div className="grid grid-cols-7 gap-2 pt-2">
-          {weeklyTrend.map(day => (
+          {(weeklyTrend || []).map(day => (
             <div
               key={day.date}
               className={`p-3 rounded-sm border text-center transition-colors ${

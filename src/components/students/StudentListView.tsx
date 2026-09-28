@@ -949,7 +949,7 @@ export default function StudentListView({
                               {student.photo ? (
                                 <img src={student.photo} alt={student.fullName} className="w-full h-full object-cover" />
                               ) : (
-                                student.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+                                (student.fullName || '').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase()
                               )}
                             </button>
                             <div className="min-w-0">
@@ -1147,7 +1147,7 @@ export default function StudentListView({
                       {student.photo ? (
                         <img src={student.photo} alt={student.fullName} className="w-full h-full object-cover" />
                       ) : (
-                        student.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+                        (student.fullName || '').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase()
                       )}
                     </div>
                     <div className="min-w-0">

@@ -1,4 +1,5 @@
 import type express from "express";
+import crypto from "crypto";
 
 interface FinanceRouteHelpers {
   getSchoolId: (req: express.Request) => string;
@@ -56,6 +57,20 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!db.discounts) db.discounts = [];
     if (!db.refunds) db.refunds = [];
     return db;
+  };
+
+  // Helper: collision-proof invoice number generator
+  const generateUniqueInvoiceNumber = (db: any, year: string | number = new Date().getFullYear()): string => {
+    let num: string;
+    let attempts = 0;
+    const existingInvoices = db.invoices || [];
+    do {
+      const randomHex = crypto.randomBytes(3).toString("hex").toUpperCase();
+      const timeSlice = Date.now().toString().slice(-4);
+      num = `INV-${year}-${timeSlice}${randomHex}`;
+      attempts++;
+    } while (attempts < 50 && existingInvoices.some((inv: any) => inv.invoiceNumber === num));
+    return num;
   };
 
   // Helper: auto-bridge legacy fees into invoices & payments
@@ -245,7 +260,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
     if (!student) return res.status(404).json({ error: "Ardayga lama helin (Student not found)" });
 
     const invoiceId = body.id || 'inv-' + Math.random().toString(36).substring(2, 11);
-    const invoiceNumber = body.invoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const invoiceNumber = body.invoiceNumber || generateUniqueInvoiceNumber(db, new Date().getFullYear());
     const items = Array.isArray(body.items) && body.items.length > 0 
       ? body.items 
       : [{ id: 'item-1', name: body.title || 'Waxbarasho / Tuition', category: body.category || 'Monthly Tuition', amount: Number(body.amount) || 50 }];
@@ -377,7 +392,7 @@ export function registerFinanceRoutes(app: express.Express, helpers: FinanceRout
       if (alreadyHasMonthly) continue;
 
       const invoiceId = 'inv-' + Math.random().toString(36).substring(2, 11);
-      const invoiceNumber = `INV-${year || 2026}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const invoiceNumber = generateUniqueInvoiceNumber(db, year || 2026);
 
       const newInv = {
         id: invoiceId,

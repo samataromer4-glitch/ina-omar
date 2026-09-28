@@ -18,15 +18,15 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface ReceiptsModuleProps {
-  payments: PaymentTransaction[];
-  invoices: Invoice[];
+  payments?: PaymentTransaction[];
+  invoices?: Invoice[];
   currency: string;
   schoolName: string;
 }
 
 export const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({
-  payments,
-  invoices,
+  payments = [],
+  invoices = [],
   currency,
   schoolName
 }) => {
@@ -38,7 +38,7 @@ export const ReceiptsModule: React.FC<ReceiptsModuleProps> = ({
 
   // Filtered receipts
   const filteredReceipts = useMemo(() => {
-    return payments.filter((p) => {
+    return (payments || []).filter((p) => {
       if (methodFilter !== "All" && p.paymentMethod !== methodFilter) return false;
       if (dateFrom && p.paymentDate < dateFrom) return false;
       if (dateTo && p.paymentDate > dateTo) return false;

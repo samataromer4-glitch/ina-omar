@@ -17,8 +17,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Announcement, SchoolClass } from '../types';
 
 interface AnnouncementsViewProps {
-  announcements: Announcement[];
-  classes: SchoolClass[];
+  announcements?: Announcement[];
+  classes?: SchoolClass[];
   onAddAnnouncement: (data: any) => Promise<void>;
   onUpdateAnnouncement: (id: string, data: any) => Promise<void>;
   onDeleteAnnouncement: (id: string) => Promise<void>;
@@ -27,8 +27,8 @@ interface AnnouncementsViewProps {
 }
 
 export default function AnnouncementsView({
-  announcements,
-  classes,
+  announcements = [],
+  classes = [],
   onAddAnnouncement,
   onUpdateAnnouncement,
   onDeleteAnnouncement,
@@ -177,7 +177,7 @@ export default function AnnouncementsView({
             <p className="text-xs text-[#525252] mt-1">Guji batoonka kore si aad u daabacdo ogeysiis cusub</p>
           </div>
         ) : (
-          filteredAnnouncements.map(ann => {
+          (filteredAnnouncements || []).map(ann => {
             const isUrgent = ann.priority === 'Urgent';
             const isHigh = ann.priority === 'High';
 

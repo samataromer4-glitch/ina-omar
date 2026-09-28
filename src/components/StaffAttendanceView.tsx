@@ -17,8 +17,8 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 interface StaffAttendanceViewProps {
-  teachers: Teacher[];
-  staff: StaffMember[];
+  teachers?: Teacher[];
+  staff?: StaffMember[];
   attendanceRecords?: StaffAttendance[];
   records?: StaffAttendance[];
   onSaveAttendance: (recordsOrDate: any, maybeRecords?: any) => Promise<void>;
@@ -27,8 +27,8 @@ interface StaffAttendanceViewProps {
 }
 
 export default function StaffAttendanceView({
-  teachers,
-  staff,
+  teachers = [],
+  staff = [],
   attendanceRecords = [],
   records = [],
   onSaveAttendance,
@@ -41,7 +41,7 @@ export default function StaffAttendanceView({
 
   // Combine teachers and staff into a single list of employees
   const allEmployees = [
-    ...teachers.map(t => ({
+    ...(teachers || []).map(t => ({
       id: t.id,
       name: t.name,
       employeeId: t.teacherId,
@@ -49,7 +49,7 @@ export default function StaffAttendanceView({
       role: 'Teacher',
       phone: t.phone
     })),
-    ...staff.map(s => ({
+    ...(staff || []).map(s => ({
       id: s.id,
       name: s.name,
       employeeId: s.employeeId,

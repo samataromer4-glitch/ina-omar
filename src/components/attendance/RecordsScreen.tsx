@@ -37,9 +37,9 @@ interface RecordsScreenProps {
 
 export const RecordsScreen: React.FC<RecordsScreenProps> = ({
   user,
-  students,
-  classes,
-  attendance,
+  students = [],
+  classes = [],
+  attendance = [],
   todayDate,
   initialSubTab = "today",
   onUpdateRecord
@@ -50,16 +50,17 @@ export const RecordsScreen: React.FC<RecordsScreenProps> = ({
   // Student lookup map
   const studentMap = useMemo(() => {
     const map = new Map<string, Student>();
-    students.forEach(s => map.set(s.id, s));
+    (students || []).forEach(s => s && map.set(s.id, s));
     return map;
   }, [students]);
 
   // Accessible classes for teacher / admin
   const accessibleClasses = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return classes.filter(c => user.assignedClasses?.includes(c.className));
+    const list = classes || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(c => user.assignedClasses?.includes(c.className));
     }
-    return classes;
+    return list;
   }, [user, classes]);
 
   // -------------------------------------------------------------
@@ -70,8 +71,8 @@ export const RecordsScreen: React.FC<RecordsScreenProps> = ({
   const [todayStatusFilter, setTodayStatusFilter] = useState<string>("ALL");
 
   const todayRecords = useMemo(() => {
-    return attendance
-      .filter(r => r.date === todayDate)
+    return (attendance || [])
+      .filter(r => r && r.date === todayDate)
       .filter(r => {
         const student = studentMap.get(r.studentId);
         if (!student) return false;
@@ -100,8 +101,8 @@ export const RecordsScreen: React.FC<RecordsScreenProps> = ({
   const pageSize = 20;
 
   const filteredHistory = useMemo(() => {
-    return attendance
-      .filter(r => r.date >= histStartDate && r.date <= histEndDate)
+    return (attendance || [])
+      .filter(r => r && r.date >= histStartDate && r.date <= histEndDate)
       .filter(r => {
         const student = studentMap.get(r.studentId);
         if (!student) return false;
@@ -576,7 +577,7 @@ export const RecordsScreen: React.FC<RecordsScreenProps> = ({
           </div>
 
           <div className="bg-[#141414] border border-[#262626] rounded-xl divide-y divide-[#262626] overflow-hidden">
-            {attendance.slice(0, 15).map((rec, i) => {
+            {(attendance || []).slice(0, 15).map((rec, i) => {
               const st = studentMap.get(rec.studentId);
               const norm = normalizeStatus(rec.status);
               const badge = getStatusBadgeConfig(norm);

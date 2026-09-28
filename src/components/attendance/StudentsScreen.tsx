@@ -36,9 +36,9 @@ interface StudentsScreenProps {
 
 export const StudentsScreen: React.FC<StudentsScreenProps> = ({
   user,
-  students,
-  classes,
-  attendance,
+  students = [],
+  classes = [],
+  attendance = [],
   todayDate,
   initialSubTab = "student_attendance",
   initialStudentId,
@@ -48,18 +48,19 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
 
   // Accessible students
   const accessibleStudents = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return students.filter(s => user.assignedClasses?.includes(s.class));
+    const list = students || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(s => user.assignedClasses?.includes(s.class));
     }
-    return students;
+    return list;
   }, [user, students]);
 
   // Selected student state
   const [selectedStudentId, setSelectedStudentId] = useState<string>(() => {
-    if (initialStudentId && accessibleStudents.some(s => s.id === initialStudentId)) {
+    if (initialStudentId && (accessibleStudents || []).some(s => s.id === initialStudentId)) {
       return initialStudentId;
     }
-    return accessibleStudents[0]?.id || "";
+    return (accessibleStudents || [])[0]?.id || "";
   });
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -81,19 +82,19 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
   }, [accessibleStudents, classFilter, searchQuery]);
 
   const selectedStudent = useMemo(() => {
-    return accessibleStudents.find(s => s.id === selectedStudentId);
+    return (accessibleStudents || []).find(s => s && s.id === selectedStudentId);
   }, [accessibleStudents, selectedStudentId]);
 
   // Student metrics
   const studentMetrics = useMemo(() => {
     if (!selectedStudentId) return null;
-    return calculateStudentAttendance(selectedStudentId, attendance);
+    return calculateStudentAttendance(selectedStudentId, attendance || []);
   }, [selectedStudentId, attendance]);
 
   // Recent attendance timeline (last 10 records)
   const recentRecords = useMemo(() => {
-    if (!studentMetrics) return [];
-    return studentMetrics.statusLogs.slice(0, 10);
+    if (!studentMetrics || !studentMetrics.statusLogs) return [];
+    return (studentMetrics.statusLogs || []).slice(0, 10);
   }, [studentMetrics]);
 
   // -------------------------------------------------------------
@@ -104,7 +105,7 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const dateLimit = thirtyDaysAgo.toISOString().split("T")[0];
 
-    const recentRecords = attendance.filter(a => a.date >= dateLimit);
+    const recentRecords = (attendance || []).filter(a => a && a.date >= dateLimit);
 
     // Track absences, lates, totals per student
     const studentStats = new Map<string, { total: number; present: number; absent: number; late: number }>();
@@ -128,7 +129,8 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
     // 3. Low Attendance Rate (< 80%)
     const lowRateList: Array<{ student: Student; rate: number; total: number }> = [];
 
-    accessibleStudents.forEach(st => {
+    (accessibleStudents || []).forEach(st => {
+      if (!st) return;
       const stats = studentStats.get(st.id);
       if (!stats) return;
 
@@ -145,11 +147,12 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
     });
 
     // 4. Incomplete Attendance Today (classes with missing records)
-    const todayRecords = attendance.filter(a => a.date === todayDate);
+    const todayRecords = (attendance || []).filter(a => a && a.date === todayDate);
     const incompleteClasses: Array<{ className: string; marked: number; total: number }> = [];
 
-    classes.forEach(c => {
-      const clsStudents = accessibleStudents.filter(s => s.class === c.className);
+    (classes || []).forEach(c => {
+      if (!c) return;
+      const clsStudents = (accessibleStudents || []).filter(s => s && s.class === c.className);
       const studentIds = new Set(clsStudents.map(s => s.id));
       const marked = todayRecords.filter(r => studentIds.has(r.studentId)).length;
       if (clsStudents.length > 0 && marked < clsStudents.length) {
@@ -297,7 +300,7 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
                       />
                     ) : (
                       <div className="w-14 h-14 rounded-full bg-[#222222] border border-[#333333] flex items-center justify-center text-base font-bold text-white">
-                        {selectedStudent.fullName.split(" ").map(n => n[0]).slice(0, 2).join("")}
+                        {(selectedStudent.fullName || "").split(" ").filter(Boolean).map(n => n[0]).slice(0, 2).join("")}
                       </div>
                     )}
                     <div>
@@ -312,7 +315,7 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
 
                   {selectedStudent.parentPhone && (
                     <button
-                      onClick={() => openWhatsAppAttendanceAlert(selectedStudent, studentMetrics.statusLogs[0]?.date || todayDate, studentMetrics.statusLogs[0]?.status || "Absent")}
+                      onClick={() => openWhatsAppAttendanceAlert(selectedStudent, studentMetrics?.statusLogs?.[0]?.date || todayDate, studentMetrics?.statusLogs?.[0]?.status || "Absent")}
                       className="px-3.5 py-2 rounded-lg bg-[#222222] hover:bg-[#2a2a2a] text-emerald-400 text-xs font-semibold border border-[#333333] transition-colors cursor-pointer self-start sm:self-auto inline-flex items-center gap-1.5"
                     >
                       <MessageSquare className="w-3.5 h-3.5" />
@@ -420,7 +423,7 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
 
                   {historyExpanded && (
                     <div className="border-t border-[#262626] divide-y divide-[#222222] max-h-64 overflow-y-auto">
-                      {studentMetrics.statusLogs.map((log, idx) => {
+                      {(studentMetrics.statusLogs || []).map((log, idx) => {
                         const norm = normalizeStatus(log.status);
                         const badge = getStatusBadgeConfig(norm);
                         return (
@@ -479,7 +482,7 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
                 </div>
               ) : (
                 <div className="divide-y divide-[#222222] max-h-60 overflow-y-auto">
-                  {alertsData.repeatedAbsenceList.map(({ student, count }) => (
+                  {(alertsData.repeatedAbsenceList || []).map(({ student, count }) => (
                     <div key={student.id} className="py-2.5 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-semibold text-white">{student.fullName}</div>
@@ -515,17 +518,17 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
                   </h3>
                 </div>
                 <span className="text-xs text-amber-400 font-mono font-bold">
-                  {alertsData.repeatedLateList.length} students
+                  {(alertsData.repeatedLateList || []).length} students
                 </span>
               </div>
 
-              {alertsData.repeatedLateList.length === 0 ? (
+              {(alertsData.repeatedLateList || []).length === 0 ? (
                 <div className="text-xs text-[#737373] py-4 text-center">
                   No students with excessive tardiness recorded.
                 </div>
               ) : (
                 <div className="divide-y divide-[#222222] max-h-60 overflow-y-auto">
-                  {alertsData.repeatedLateList.map(({ student, count }) => (
+                  {(alertsData.repeatedLateList || []).map(({ student, count }) => (
                     <div key={student.id} className="py-2.5 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-semibold text-white">{student.fullName}</div>
@@ -561,17 +564,17 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
                   </h3>
                 </div>
                 <span className="text-xs text-rose-400 font-mono font-bold">
-                  {alertsData.lowRateList.length} students
+                  {(alertsData.lowRateList || []).length} students
                 </span>
               </div>
 
-              {alertsData.lowRateList.length === 0 ? (
+              {(alertsData.lowRateList || []).length === 0 ? (
                 <div className="text-xs text-[#737373] py-4 text-center">
                   All active students maintain satisfactory attendance rates.
                 </div>
               ) : (
                 <div className="divide-y divide-[#222222] max-h-60 overflow-y-auto">
-                  {alertsData.lowRateList.map(({ student, rate, total }) => (
+                  {(alertsData.lowRateList || []).map(({ student, rate, total }) => (
                     <div key={student.id} className="py-2.5 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-semibold text-white">{student.fullName}</div>
@@ -607,18 +610,18 @@ export const StudentsScreen: React.FC<StudentsScreenProps> = ({
                   </h3>
                 </div>
                 <span className="text-xs text-blue-400 font-mono font-bold">
-                  {alertsData.incompleteClasses.length} classes
+                  {(alertsData.incompleteClasses || []).length} classes
                 </span>
               </div>
 
-              {alertsData.incompleteClasses.length === 0 ? (
+              {(alertsData.incompleteClasses || []).length === 0 ? (
                 <div className="text-xs text-emerald-400 py-4 text-center flex items-center justify-center gap-1.5">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   All classes have completed attendance today!
                 </div>
               ) : (
                 <div className="divide-y divide-[#222222] max-h-60 overflow-y-auto">
-                  {alertsData.incompleteClasses.map(({ className, marked, total }) => (
+                  {(alertsData.incompleteClasses || []).map(({ className, marked, total }) => (
                     <div key={className} className="py-2.5 flex items-center justify-between text-xs">
                       <div>
                         <div className="font-semibold text-white">{className}</div>

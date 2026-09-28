@@ -32,11 +32,11 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 interface PeopleViewProps {
-  teachers: Teacher[];
-  staff: StaffMember[];
-  guardians: Guardian[];
-  classes: SchoolClass[];
-  subjects: SchoolSubject[];
+  teachers?: Teacher[];
+  staff?: StaffMember[];
+  guardians?: Guardian[];
+  classes?: SchoolClass[];
+  subjects?: SchoolSubject[];
   students?: any[];
   onAddTeacher: (data: any) => Promise<void>;
   onUpdateTeacher: (id: string, data: any) => Promise<void>;
@@ -53,11 +53,11 @@ interface PeopleViewProps {
 }
 
 export default function PeopleView({
-  teachers,
-  staff,
-  guardians,
-  classes,
-  subjects,
+  teachers = [],
+  staff = [],
+  guardians = [],
+  classes = [],
+  subjects = [],
   students = [],
   onAddTeacher,
   onUpdateTeacher,
@@ -594,7 +594,7 @@ export default function PeopleView({
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-sm bg-[#7c3aed]/10 border border-[#7c3aed]/30 flex items-center justify-center text-[#c4b5fd] font-bold text-sm font-mono">
-                        {t.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}
+                        {(t.name || 'Teacher').split(' ').filter(Boolean).map(n => n[0]).slice(0, 2).join('').toUpperCase()}
                       </div>
                       <div>
                         <h3 className="text-sm font-bold text-[#f5f5f5] leading-tight">{t.name}</h3>
@@ -643,7 +643,7 @@ export default function PeopleView({
                     <div className="pt-2">
                       <span className="text-[10px] text-[#525252] uppercase tracking-wider block mb-1">Fasallada</span>
                       <div className="flex flex-wrap gap-1">
-                        {t.assignedClasses.map((cls, idx) => (
+                        {(t.assignedClasses || []).map((cls, idx) => (
                           <span key={idx} className="text-[10px] bg-[#ffffff05] border border-[#ffffff10] px-2 py-0.5 rounded-sm text-[#d4d4d4]">
                             {cls}
                           </span>
@@ -1012,8 +1012,8 @@ export default function PeopleView({
                 <div className="space-y-1">
                   <label className="text-[11px] text-[#a3a3a3] font-semibold">Fasallada loo xilsaaray (Class Assignments)</label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-2 bg-[#0a0a0a] border border-[#ffffff10] rounded-sm max-h-32 overflow-y-auto">
-                    {classes.map(cls => {
-                      const isChecked = teacherForm.assignedClasses.includes(cls.className);
+                    {(classes || []).map(cls => {
+                      const isChecked = (teacherForm.assignedClasses || []).includes(cls.className);
                       return (
                         <label key={cls.id} className="flex items-center gap-2 text-xs text-[#d4d4d4] cursor-pointer">
                           <input

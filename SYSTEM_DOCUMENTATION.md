@@ -273,9 +273,9 @@ Faylka `.env` ama `.env.example` wuxuu xafidaa furayaasha muhiimka ah ee nidaamk
 | `SUPABASE_JWKS_URL` | JWT Signing Secret ama JWKS URL ee furaha lagu hubiyo | Supabase Auth JWKS Endpoint |
 | `SMTP_HOST` | Host-ka Server-ka Email-ka (Gmail, SendGrid, iwm) | `smtp.gmail.com` |
 | `SMTP_PORT` | Port-ka SMTP ee ammaan ah | `587` (TLS) ama `465` (SSL) |
-| `SMTP_USER` | Email-ka loo isticmaalo dirista farriimaha | `som216469@gmail.com` |
-| `SMTP_PASS` | Google App Password-ka gaarka ah ee SMTP | `sgnxblsftqlofisf` |
-| `SMTP_FROM` | Email-ka ka muuqanaya cinwaanka soo diraha | `som216469@gmail.com` |
+| `SMTP_USER` | Email-ka loo isticmaalo dirista farriimaha | `your_email@gmail.com` |
+| `SMTP_PASS` | Google App Password-ka gaarka ah ee SMTP | `your_google_app_password` |
+| `SMTP_FROM` | Email-ka ka muuqanaya cinwaanka soo diraha | `your_email@gmail.com` |
 
 > ⚠️ **FIIRO GAAR AH OO KU SAABSAN AMMAANKA:**
 > Furayaasha `SUPABASE_SECRET_KEY` iyo `GEMINI_API_KEY` iyo `SMTP_PASS` waligood lama gaarsiiyo browser-ka macmiilka (Client). Waxay ku jiraan oo keliya server-ka dambe (`server.ts`).
@@ -283,9 +283,9 @@ Faylka `.env` ama `.env.example` wuxuu xafidaa furayaasha muhiimka ah ee nidaamk
 ---
 
 ## 6. AMMAANKA IYO XAFAADINTA XOGTA (SECURITY ARCHITECTURE)
-1. **Multi-Tenant Data Isolation:** Dugsiyadu isma arki karaan xogtooda maxaa yeelay codsi kasta waxaa lagu shaandheeyaa `school_id` oo ka soo unkanta email-ka maamulaha dugsiga.
+1. **Multi-Tenant Data Isolation:** Dugsiyadu isma arki karaan xogtooda maxaa yeelay codsi kasta waxaa lagu shaandheeyaa `school_id` oo si toos ah looga soo dheegto kalfadhiga la xaqiijiyey (authenticated Bearer token).
 2. **Offline-First Resilient Architecture:** Haddii Supabase ama internetku go'o, nidaamku ma istaago; wuxuu si toos ah ugu wareegaa kaydka maxalliga ah (`database.json`), marka xiriirku soo noqdona wuxuu u diraa Supabase (`syncLocalToSupabase`).
-3. **Password Security:** Furayaasha sirta ah waxaa lagu kaydiyaa hab hash ah (`simpleHash`) si aan loo arag qoraal caadi ah.
+3. **Password Security:** Furayaasha sirta ah waxaa lagu kaydiyaa hab ammaan ah oo salted scrypt ah (`hashPassword`) oo ka difaacaya weerarrada brute force iyo rainbow tables.
 4. **Export & Backup:** Maamuluhu wuxuu si buuxda u soo degsan karaa dhammaan ardayda iyo biilasha isagoo sita Excel ama PDF markasta oo uu u baahdo kayd madax-bannaan.
 
 ---

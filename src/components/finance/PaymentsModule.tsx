@@ -20,8 +20,8 @@ import { EmptyState } from "../ui/EmptyState";
 import { PaymentSuccessModal } from "../ui/PaymentSuccessModal";
 
 interface PaymentsModuleProps {
-  payments: PaymentTransaction[];
-  invoices: Invoice[];
+  payments?: PaymentTransaction[];
+  invoices?: Invoice[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -30,8 +30,8 @@ interface PaymentsModuleProps {
 }
 
 export const PaymentsModule: React.FC<PaymentsModuleProps> = ({
-  payments,
-  invoices,
+  payments = [],
+  invoices = [],
   currency,
   schoolName,
   onRefresh,

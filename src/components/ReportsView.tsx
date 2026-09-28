@@ -16,28 +16,28 @@ interface ReportsViewProps {
 }
 
 export default function ReportsView({
-  students,
-  classes,
-  subjects,
-  examScores,
-  attendance,
-  fees,
+  students = [],
+  classes = [],
+  subjects = [],
+  examScores = [],
+  attendance = [],
+  fees = [],
   theme
 }: ReportsViewProps) {
   const [subTab, setSubTab] = useState<'class' | 'student'>('class');
-  const [selectedClass, setSelectedClass] = useState<string>(classes.length > 0 ? classes[0].className : '1A');
+  const [selectedClass, setSelectedClass] = useState<string>((classes && classes.length > 0) ? classes[0].className : '1A');
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [studentSearch, setStudentSearch] = useState('');
 
   // 1. CLASS REPORT CALCULATIONS
-  const classStudents = students.filter(s => s.class.toLowerCase() === selectedClass.toLowerCase());
+  const classStudents = (students || []).filter(s => s && s.class && s.class.toLowerCase() === selectedClass.toLowerCase());
   const classStudentsActive = classStudents.filter(s => s.status === 'active');
   const classMaleCount = classStudents.filter(s => s.gender === 'Male').length;
   const classFemaleCount = classStudents.filter(s => s.gender === 'Female').length;
 
   // Class Attendance Calculation
   const classStudentIds = classStudents.map(s => s.id);
-  const classAttendanceRecords = attendance.filter(a => classStudentIds.includes(a.studentId));
+  const classAttendanceRecords = (attendance || []).filter(a => a && classStudentIds.includes(a.studentId));
   const totalClassAttendancePossibilities = classAttendanceRecords.length;
   const totalClassPresent = classAttendanceRecords.filter(a => a.status === 'Present').length;
   const classAttendanceRate = totalClassAttendancePossibilities 
@@ -45,23 +45,23 @@ export default function ReportsView({
     : 100;
 
   // Class Finance Calculation
-  const classFees = fees.filter(f => classStudentIds.includes(f.studentId));
-  const classTotalInvoiced = classFees.reduce((acc, curr) => acc + Number(curr.amount), 0);
-  const classTotalPaid = classFees.reduce((acc, curr) => acc + Number(curr.paidAmount), 0);
+  const classFees = (fees || []).filter(f => f && classStudentIds.includes(f.studentId));
+  const classTotalInvoiced = classFees.reduce((acc, curr) => acc + Number(curr.amount || 0), 0);
+  const classTotalPaid = classFees.reduce((acc, curr) => acc + Number(curr.paidAmount || 0), 0);
   const classFinanceRate = classTotalInvoiced ? Math.round((classTotalPaid / classTotalInvoiced) * 100) : 0;
 
   // Class Exam Calculation
-  const classExams = examScores.filter(e => e.className.toLowerCase() === selectedClass.toLowerCase());
+  const classExams = (examScores || []).filter(e => e && e.className && e.className.toLowerCase() === selectedClass.toLowerCase());
   const classExamAvg = classExams.length 
-    ? Math.round(classExams.reduce((acc, curr) => acc + (curr.marksObtained / curr.maxMarks * 100), 0) / classExams.length)
+    ? Math.round(classExams.reduce((acc, curr) => acc + ((Number(curr.marksObtained) || 0) / (Number(curr.maxMarks) || 100) * 100), 0) / classExams.length)
     : 0;
 
 
   // 2. STUDENT REPORT CARD CALCULATIONS
-  const activeStudent = students.find(s => s.id === selectedStudentId);
-  const activeStudentExams = examScores.filter(e => e.studentId === selectedStudentId);
-  const activeStudentAttendance = attendance.filter(a => a.studentId === selectedStudentId);
-  const activeStudentFees = fees.filter(f => f.studentId === selectedStudentId);
+  const activeStudent = (students || []).find(s => s && s.id === selectedStudentId);
+  const activeStudentExams = (examScores || []).filter(e => e && e.studentId === selectedStudentId);
+  const activeStudentAttendance = (attendance || []).filter(a => a && a.studentId === selectedStudentId);
+  const activeStudentFees = (fees || []).filter(f => f && f.studentId === selectedStudentId);
 
   // Student Attendance Summary
   const stdTotalAttendanceCount = activeStudentAttendance.length;
@@ -521,7 +521,7 @@ export default function ReportsView({
                 onChange={(e) => setSelectedClass(e.target.value)}
                 className="px-4 py-3.5 rounded-xl border border-[#ffffff10] bg-[#0a0a0a] text-xs font-bold uppercase tracking-wider text-[#e5e5e5] focus:outline-none focus:border-[#7c3aed] min-w-[200px]"
               >
-                {classes.map(c => (
+                {(classes || []).map(c => (
                   <option key={c.id} value={c.className}>{c.className}</option>
                 ))}
               </select>

@@ -23,8 +23,8 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 interface AdmissionsViewProps {
-  admissions: Admission[];
-  classes: SchoolClass[];
+  admissions?: Admission[];
+  classes?: SchoolClass[];
   onAddAdmission: (data: any) => Promise<void>;
   onUpdateAdmission: (id: string, data: any) => Promise<void>;
   onEnrollApplicant: (id: string) => Promise<void>;
@@ -34,8 +34,8 @@ interface AdmissionsViewProps {
 }
 
 export default function AdmissionsView({
-  admissions,
-  classes,
+  admissions = [],
+  classes = [],
   onAddAdmission,
   onUpdateAdmission,
   onEnrollApplicant,
@@ -53,7 +53,7 @@ export default function AdmissionsView({
     applicantName: '',
     gender: 'Male' as 'Male' | 'Female',
     dateOfBirth: '',
-    desiredClass: classes[0]?.className || 'Form 1',
+    desiredClass: classes?.[0]?.className || 'Form 1',
     guardianName: '',
     guardianPhone: '',
     guardianRelationship: 'Parent',
@@ -437,7 +437,7 @@ export default function AdmissionsView({
                       onChange={e => setForm({ ...form, desiredClass: e.target.value })}
                       className="w-full bg-[#0a0a0a] border border-[#ffffff10] rounded-sm px-3 py-2 text-[#f5f5f5] focus:outline-none focus:border-[#7c3aed]"
                     >
-                      {classes.map(c => (
+                      {(classes || []).map(c => (
                         <option key={c.id} value={c.className}>{c.className}</option>
                       ))}
                     </select>

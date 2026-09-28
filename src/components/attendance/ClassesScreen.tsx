@@ -25,9 +25,9 @@ interface ClassesScreenProps {
 
 export const ClassesScreen: React.FC<ClassesScreenProps> = ({
   user,
-  students,
-  classes,
-  attendance,
+  students = [],
+  classes = [],
+  attendance = [],
   todayDate,
   initialSubTab = "class_overview",
   initialClass,
@@ -37,35 +37,36 @@ export const ClassesScreen: React.FC<ClassesScreenProps> = ({
 
   // Accessible classes for user
   const accessibleClasses = useMemo(() => {
-    if (user.role === "teacher" && user.assignedClasses && user.assignedClasses.length > 0) {
-      return classes.filter(c => user.assignedClasses?.includes(c.className));
+    const list = classes || [];
+    if (user?.role === "teacher" && user?.assignedClasses && user.assignedClasses.length > 0) {
+      return list.filter(c => user.assignedClasses?.includes(c.className));
     }
-    return classes;
+    return list;
   }, [user, classes]);
 
   const [selectedClass, setSelectedClass] = useState<string>(() => {
-    if (initialClass && accessibleClasses.some(c => c.className === initialClass)) {
+    if (initialClass && (accessibleClasses || []).some(c => c.className === initialClass)) {
       return initialClass;
     }
-    return accessibleClasses[0]?.className || classes[0]?.className || "";
+    return (accessibleClasses || [])[0]?.className || (classes || [])[0]?.className || "";
   });
 
   const [trendRange, setTrendRange] = useState<"7D" | "30D" | "90D">("30D");
 
   // Students in selected class
   const classStudents = useMemo(() => {
-    return students.filter(s => s.class === selectedClass && s.status !== "archived");
+    return (students || []).filter(s => s && s.class === selectedClass && s.status !== "archived");
   }, [students, selectedClass]);
 
   // Attendance records for selected class
   const classRecords = useMemo(() => {
-    const studentIds = new Set(classStudents.map(s => s.id));
-    return attendance.filter(r => studentIds.has(r.studentId));
+    const studentIds = new Set((classStudents || []).map(s => s.id));
+    return (attendance || []).filter(r => r && studentIds.has(r.studentId));
   }, [attendance, classStudents]);
 
   // Today's records for selected class
   const todayClassRecords = useMemo(() => {
-    return classRecords.filter(r => r.date === todayDate);
+    return (classRecords || []).filter(r => r && r.date === todayDate);
   }, [classRecords, todayDate]);
 
   // Overall class stats (30 days)
@@ -75,7 +76,7 @@ export const ClassesScreen: React.FC<ClassesScreenProps> = ({
     let late = 0;
     let leave = 0;
 
-    classRecords.forEach(r => {
+    (classRecords || []).forEach(r => {
       const s = normalizeStatus(r.status);
       if (s === "Present") present++;
       else if (s === "Absent") absent++;
@@ -83,7 +84,7 @@ export const ClassesScreen: React.FC<ClassesScreenProps> = ({
       else if (s === "Leave") leave++;
     });
 
-    const totalMarked = classRecords.length;
+    const totalMarked = (classRecords || []).length;
     const rate = totalMarked > 0
       ? Math.round(((present + (late * 0.5)) / totalMarked) * 100)
       : 95;
@@ -100,9 +101,9 @@ export const ClassesScreen: React.FC<ClassesScreenProps> = ({
 
   // Student distribution breakdown for selected class
   const studentDistribution = useMemo(() => {
-    return classStudents.map(st => {
-      const stRecords = classRecords.filter(r => r.studentId === st.id);
-      const todayRec = todayClassRecords.find(r => r.studentId === st.id);
+    return (classStudents || []).map(st => {
+      const stRecords = (classRecords || []).filter(r => r && r.studentId === st.id);
+      const todayRec = (todayClassRecords || []).find(r => r && r.studentId === st.id);
       const total = stRecords.length;
       const present = stRecords.filter(r => normalizeStatus(r.status) === "Present").length;
       const late = stRecords.filter(r => normalizeStatus(r.status) === "Late").length;
@@ -130,14 +131,14 @@ export const ClassesScreen: React.FC<ClassesScreenProps> = ({
       lateCount: number;
     }> = [];
 
-    const studentIds = new Set(classStudents.map(s => s.id));
+    const studentIds = new Set((classStudents || []).map(s => s.id));
 
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const iso = d.toISOString().split("T")[0];
 
-      const dayRecords = attendance.filter(r => r.date === iso && studentIds.has(r.studentId));
+      const dayRecords = (attendance || []).filter(r => r && r.date === iso && studentIds.has(r.studentId));
       let p = 0;
       let a = 0;
       let l = 0;

@@ -17,16 +17,16 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface RefundsModuleProps {
-  refunds: RefundRecord[];
-  payments: PaymentTransaction[];
+  refunds?: RefundRecord[];
+  payments?: PaymentTransaction[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
 }
 
 export const RefundsModule: React.FC<RefundsModuleProps> = ({
-  refunds,
-  payments,
+  refunds = [],
+  payments = [],
   currency,
   schoolName,
   onRefresh
@@ -49,7 +49,7 @@ export const RefundsModule: React.FC<RefundsModuleProps> = ({
   // Map of refunds per payment
   const refundsByPayment = useMemo(() => {
     const map: Record<string, number> = {};
-    refunds.forEach((r) => {
+    (refunds || []).forEach((r) => {
       map[r.paymentId] = (map[r.paymentId] || 0) + Number(r.refundAmount || 0);
     });
     return map;
@@ -57,14 +57,14 @@ export const RefundsModule: React.FC<RefundsModuleProps> = ({
 
   // Eligible payments (where payment.amount > refunded so far)
   const eligiblePayments = useMemo(() => {
-    return payments.filter((p) => {
+    return (payments || []).filter((p) => {
       const alreadyRefunded = refundsByPayment[p.id] || 0;
       return p.amount - alreadyRefunded > 0.01;
     });
   }, [payments, refundsByPayment]);
 
   const selectedPayment = useMemo(() => {
-    return payments.find((p) => p.id === selectedPaymentId);
+    return (payments || []).find((p) => p.id === selectedPaymentId);
   }, [payments, selectedPaymentId]);
 
   const remainingRefundable = useMemo(() => {

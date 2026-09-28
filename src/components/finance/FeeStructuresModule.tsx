@@ -14,8 +14,8 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface FeeStructuresModuleProps {
-  feeStructures: FeeStructure[];
-  classes: any[];
+  feeStructures?: FeeStructure[];
+  classes?: any[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -33,8 +33,8 @@ const CATEGORIES = [
 ];
 
 export const FeeStructuresModule: React.FC<FeeStructuresModuleProps> = ({
-  feeStructures,
-  classes,
+  feeStructures = [],
+  classes = [],
   currency,
   schoolName,
   onRefresh
@@ -298,7 +298,7 @@ export const FeeStructuresModule: React.FC<FeeStructuresModuleProps> = ({
                     className="w-full px-3 py-2 rounded-sm border border-[#ffffff10] bg-[#0a0a0a] text-xs text-[#e5e5e5] focus:outline-none focus:border-emerald-500"
                   >
                     <option value="All Classes">Dhammaan Fasallada (All)</option>
-                    {classes.map((c) => (
+                    {(classes || []).map((c) => (
                       <option key={c.id} value={c.className}>{c.className}</option>
                     ))}
                   </select>

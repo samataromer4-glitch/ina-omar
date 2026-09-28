@@ -21,10 +21,10 @@ import { StatusBadge } from "../ui/StatusBadge";
 import { EmptyState } from "../ui/EmptyState";
 
 interface InvoicesModuleProps {
-  invoices: Invoice[];
-  students: any[];
-  classes: any[];
-  feeStructures: FeeStructure[];
+  invoices?: Invoice[];
+  students?: any[];
+  classes?: any[];
+  feeStructures?: FeeStructure[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -32,10 +32,10 @@ interface InvoicesModuleProps {
 }
 
 export const InvoicesModule: React.FC<InvoicesModuleProps> = ({
-  invoices,
-  students,
-  classes,
-  feeStructures,
+  invoices = [],
+  students = [],
+  classes = [],
+  feeStructures = [],
   currency,
   schoolName,
   onRefresh,
@@ -303,7 +303,7 @@ export const InvoicesModule: React.FC<InvoicesModuleProps> = ({
             className="px-2.5 py-1.5 rounded-sm bg-[#0a0a0a] border border-[#ffffff10] text-xs text-[#e5e5e5] focus:outline-none focus:border-[#7c3aed]"
           >
             <option value="All">Dhammaan Fasallada (All Classes)</option>
-            {classes.map((c) => (
+            {(classes || []).map((c) => (
               <option key={c.id} value={c.className}>{c.className}</option>
             ))}
           </select>
@@ -456,7 +456,7 @@ export const InvoicesModule: React.FC<InvoicesModuleProps> = ({
                   required
                 >
                   <option value="">-- Dooro Arday --</option>
-                  {students.map((s) => (
+                  {(students || []).map((s) => (
                     <option key={s.id} value={s.id}>{s.fullName} ({s.class})</option>
                   ))}
                 </select>
@@ -582,7 +582,7 @@ export const InvoicesModule: React.FC<InvoicesModuleProps> = ({
                     className="w-full px-3 py-2 rounded-sm border border-[#ffffff10] bg-[#0a0a0a] text-xs text-[#e5e5e5] focus:outline-none focus:border-[#7c3aed]"
                   >
                     <option value="All">Dhammaan Fasallada (All Classes)</option>
-                    {classes.map((c) => (
+                    {(classes || []).map((c) => (
                       <option key={c.id} value={c.className}>{c.className}</option>
                     ))}
                   </select>

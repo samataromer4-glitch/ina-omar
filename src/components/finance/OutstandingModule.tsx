@@ -18,8 +18,8 @@ import { PageHeader } from "../ui/PageHeader";
 import { MetricCard } from "../ui/MetricCard";
 
 interface OutstandingModuleProps {
-  invoices: Invoice[];
-  classes: any[];
+  invoices?: Invoice[];
+  classes?: any[];
   currency: string;
   schoolName: string;
   onRefresh: () => void;
@@ -27,8 +27,8 @@ interface OutstandingModuleProps {
 }
 
 export const OutstandingModule: React.FC<OutstandingModuleProps> = ({
-  invoices,
-  classes,
+  invoices = [],
+  classes = [],
   currency,
   schoolName,
   onRefresh,
@@ -43,7 +43,7 @@ export const OutstandingModule: React.FC<OutstandingModuleProps> = ({
 
   // Compute debtors from invoices with balance > 0
   const debtors = useMemo(() => {
-    return invoices
+    return (invoices || [])
       .filter((inv) => inv.balance > 0 && inv.status !== "Cancelled")
       .map((inv) => {
         const dueDate = new Date(inv.dueDate);
@@ -208,7 +208,7 @@ export const OutstandingModule: React.FC<OutstandingModuleProps> = ({
             className="bg-[#0a0a0a] border border-[#ffffff10] rounded-sm text-xs text-[#a3a3a3] px-3 py-2 focus:outline-none focus:border-amber-500"
           >
             <option value="All">All Classes</option>
-            {classes.map((c) => (
+            {(classes || []).map((c) => (
               <option key={c.id || c.className} value={c.className}>{c.className}</option>
             ))}
           </select>

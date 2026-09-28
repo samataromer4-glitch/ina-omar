@@ -64,13 +64,46 @@ export function validatePassword(password: string): { valid: boolean; error?: st
   return { valid: true };
 }
 
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function legacySimpleHash(password: string): string {
+  let hash = 0;
+  for (let i = 0; i < password.length; i++) {
+    const char = password.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return hash.toString(16);
+}
+
+export function verifyPassword(password: string, stored: string): boolean {
+  if (!stored) return false;
+  if (!stored.includes(":")) {
+    return legacySimpleHash(password) === stored;
+  }
+  const [salt, hashHex] = stored.split(":");
+  if (!salt || !hashHex) return false;
+  try {
+    const hash = crypto.scryptSync(password, salt, 64);
+    const storedBuf = Buffer.from(hashHex, "hex");
+    if (hash.length !== storedBuf.length) return false;
+    return crypto.timingSafeEqual(hash, storedBuf);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Derives and securely authenticates the requesting user.
- * ZERO TRUST: Does NOT blindly trust client-provided school_id or roles.
+ * ZERO TRUST: ONLY authenticates via verified session tokens.
  */
 export function getAuthenticatedUser(
   req: express.Request,
-  loadLocalDB: () => any
+  loadLocalDB?: () => any
 ): AuthenticatedUser | null {
   // 1. Check Bearer token in Authorization header
   const authHeader = req.headers.authorization;
@@ -91,64 +124,6 @@ export function getAuthenticatedUser(
     }
   }
 
-  // 3. Backward-compatible lookup for existing sessions:
-  // Check X-School-Email, verify against actual database records, and infer role and real school_id
-  const emailHeader = req.headers["x-school-email"] || req.headers["X-School-Email"];
-  if (typeof emailHeader === "string" && emailHeader.trim() !== "") {
-    const cleanEmail = emailHeader.trim().toLowerCase();
-    const db = loadLocalDB();
-
-    // Check if it's an authenticated registered teacher
-    const teacher = (db.teachers || []).find((t: any) => (t.email || "").toLowerCase() === cleanEmail);
-    if (teacher) {
-      return {
-        email: cleanEmail,
-        role: "teacher",
-        schoolId: teacher.schoolId || "default-school",
-        teacherId: teacher.id,
-        name: teacher.name,
-        assignedClasses: teacher.assignedClasses || [],
-        assignedSubjects: teacher.assignedSubjects || []
-      };
-    }
-
-    // Check if it's a registered user
-    const user = (db.users || []).find((u: any) => (u.email || "").toLowerCase() === cleanEmail);
-    if (user) {
-      const isTeacher = user.role === "teacher";
-      return {
-        email: cleanEmail,
-        role: isTeacher ? "teacher" : "admin",
-        schoolId: user.school_id || cleanEmail,
-        teacherId: user.teacher_id,
-        assignedClasses: user.assignedClasses || [],
-        assignedSubjects: user.assignedSubjects || []
-      };
-    }
-
-    // Default tenant identity matching existing behavior
-    return {
-      email: cleanEmail,
-      role: "admin",
-      schoolId: cleanEmail
-    };
-  }
-
   return null;
 }
 
-/**
- * Returns strictly validated schoolId.
- * Never allows client spoofing across tenants.
- */
-export function getValidatedSchoolId(req: express.Request, loadLocalDB: () => any): string {
-  const user = getAuthenticatedUser(req, loadLocalDB);
-  if (user && user.schoolId) {
-    return user.schoolId;
-  }
-  const emailHeader = req.headers["x-school-email"] || req.headers["X-School-Email"] || req.headers["x-school-id"] || req.headers["X-School-Id"];
-  if (typeof emailHeader === "string" && emailHeader.trim() !== "") {
-    return emailHeader.trim().toLowerCase();
-  }
-  return "default-school";
-}

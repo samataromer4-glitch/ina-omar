@@ -7,10 +7,10 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 
 interface ExamsViewProps {
-  examScores: ExamScore[];
-  students: Student[];
-  subjects: SchoolSubject[];
-  classes: SchoolClass[];
+  examScores?: ExamScore[];
+  students?: Student[];
+  subjects?: SchoolSubject[];
+  classes?: SchoolClass[];
   onAddExamScore: (examData: Omit<ExamScore, 'id' | 'createdAt'>) => Promise<void>;
   onUpdateExamScore: (id: string, examData: Partial<ExamScore>) => Promise<void>;
   onDeleteExamScore: (id: string) => Promise<void>;
@@ -18,10 +18,10 @@ interface ExamsViewProps {
 }
 
 export default function ExamsView({
-  examScores,
-  students,
-  subjects,
-  classes,
+  examScores = [],
+  students = [],
+  subjects = [],
+  classes = [],
   onAddExamScore,
   onUpdateExamScore,
   onDeleteExamScore,
@@ -526,7 +526,7 @@ export default function ExamsView({
             className="w-full px-4 py-3 rounded-xl border border-[#ffffff10] bg-[#121212]/40 backdrop-blur-md text-xs uppercase tracking-widest text-[#e5e5e5] focus:outline-none focus:border-[#7c3aed]/50"
           >
             <option value="All">Dhamaan Fasallada</option>
-            {classes.map(c => (
+            {(classes || []).map(c => (
               <option key={c.id} value={c.className}>{c.className}</option>
             ))}
           </select>
@@ -540,7 +540,7 @@ export default function ExamsView({
           >
             <option value="All">Dhamaan Madooyinka</option>
             {/* Get unique subjects */}
-            {Array.from(new Set(subjects.map(s => s.subjectName))).map(sub => (
+            {Array.from(new Set((subjects || []).map(s => s.subjectName))).map(sub => (
               <option key={sub} value={sub}>{sub}</option>
             ))}
           </select>
@@ -679,7 +679,7 @@ export default function ExamsView({
                       required
                     >
                       <option value="">-- Dooro Arday --</option>
-                      {students.map(s => (
+                      {(students || []).map(s => (
                         <option key={s.id} value={s.id}>{s.fullName} ({s.class})</option>
                       ))}
                     </select>
@@ -695,7 +695,7 @@ export default function ExamsView({
                       disabled={!form.studentId}
                     >
                       <option value="">-- Dooro Maaddo --</option>
-                      {currentClassSubjects.map(sub => (
+                      {(currentClassSubjects || []).map(sub => (
                         <option key={sub.id} value={sub.subjectName}>{sub.subjectName}</option>
                       ))}
                     </select>
