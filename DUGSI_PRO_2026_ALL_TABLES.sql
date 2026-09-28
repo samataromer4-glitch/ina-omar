@@ -532,9 +532,10 @@ CREATE INDEX IF NOT EXISTS idx_dugsiga_discounts_school_id ON dugsiga_discounts(
 CREATE INDEX IF NOT EXISTS idx_dugsiga_refunds_school_id ON dugsiga_refunds(school_id);
 
 -- ----------------------------------------------------------------------------
--- QAYBTA 5: FASAXA IL-LA-SOCODKA & HELITAANKA TOOSKA AH (PERMISSIONS & RLS)
+-- QAYBTA 5: AMNIGA IYO XUQUUQDA XOGTA (ROW LEVEL SECURITY & PERMISSIONS)
 -- ----------------------------------------------------------------------------
 
+-- Enable Row Level Security (RLS) on all tenant-owned tables
 DO $$
 DECLARE
   tbl_name TEXT;
@@ -572,12 +573,52 @@ DECLARE
 BEGIN
   FOREACH tbl_name IN ARRAY tables_list LOOP
     BEGIN
-      EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY;', tbl_name);
-      EXECUTE format('GRANT ALL ON TABLE %I TO anon, authenticated, service_role;', tbl_name);
+      -- Enable Row Level Security
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', tbl_name);
+      
+      -- Grant access strictly to authenticated roles and backend service role (never public anon)
+      EXECUTE format('REVOKE ALL ON TABLE %I FROM anon;', tbl_name);
+      EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE %I TO authenticated, service_role;', tbl_name);
+      
+      -- Create or replace tenant isolation policy
+      IF tbl_name <> 'dugsiga_users' THEN
+        EXECUTE format('DROP POLICY IF EXISTS "tenant_isolation_%s" ON %I;', tbl_name, tbl_name);
+        EXECUTE format(
+          'CREATE POLICY "tenant_isolation_%s" ON %I FOR ALL USING (
+            auth.role() = ''service_role''
+            OR school_id = coalesce(
+              nullif(current_setting(''app.current_school_id'', true), ''''),
+              auth.jwt() ->> ''school_id'',
+              auth.jwt() ->> ''email''
+            )
+          ) WITH CHECK (
+            auth.role() = ''service_role''
+            OR school_id = coalesce(
+              nullif(current_setting(''app.current_school_id'', true), ''''),
+              auth.jwt() ->> ''school_id'',
+              auth.jwt() ->> ''email''
+            )
+          );',
+          tbl_name, tbl_name
+        );
+      ELSE
+        EXECUTE format('DROP POLICY IF EXISTS "users_isolation" ON dugsiga_users;');
+        EXECUTE format(
+          'CREATE POLICY "users_isolation" ON dugsiga_users FOR ALL USING (
+            auth.role() = ''service_role''
+            OR email = coalesce(auth.jwt() ->> ''email'', nullif(current_setting(''app.current_user_email'', true), ''''))
+          ) WITH CHECK (
+            auth.role() = ''service_role''
+            OR email = coalesce(auth.jwt() ->> ''email'', nullif(current_setting(''app.current_user_email'', true), ''''))
+          );'
+        );
+      END IF;
     EXCEPTION WHEN OTHERS THEN
-      NULL;
+      RAISE NOTICE 'Notice: %', SQLERRM;
     END;
   END LOOP;
 END $$;
 
--- Mahadsanid! Dhammaan 29-ka miis ee DUGSI PRO 2026 hadda waa diyaarsan yihiin.
+-- ============================================================================
+-- DHAMMAAD: 29-KA MIIS EE DUGSI PRO 2026 WAA DIYAAR IYO AMNI SUBAX-KASTA AH!
+-- ============================================================================
