@@ -22,7 +22,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Typecheck & Lint
         run: npm run lint
@@ -33,10 +33,11 @@ jobs:
       - name: Start Server in Background for Integration Tests
         run: |
           npm run dev &
-          npx wait-on -t 30000 http://127.0.0.1:3000/
+          node scripts/wait-for-server.cjs http://127.0.0.1:3000/api/db/status 30000
         env:
           PORT: 3000
           NODE_ENV: test
+          ALLOW_LOCAL_FALLBACK: true
 
       - name: Run Automated Test Suite
         run: npm test

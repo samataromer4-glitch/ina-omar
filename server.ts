@@ -14,8 +14,27 @@ import {
   createSessionToken, 
   hashPassword, 
   verifyPassword, 
-  legacySimpleHash 
+  legacySimpleHash,
+  initializeSessionStore,
+  revokeSession,
+  revokeAllUserSessions,
+  hashToken
 } from "./server/authSession";
+import {
+  sendVerificationEmail,
+  sendPasswordResetEmail,
+  sendTeacherInvitationEmail
+} from "./server/emailService";
+import {
+  validateBody,
+  signupSchema,
+  loginSchema,
+  verifyEmailSchema,
+  resendVerificationSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  studentSchema
+} from "./server/validators";
 import { createRateLimiter } from "./server/securityRateLimiter";
 
 // Load environment variables
@@ -129,7 +148,33 @@ function parseSupabaseUrl(url: string | undefined): string {
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+// Security & tracing: Request ID, permissive CORS for AI Studio preview iframe, and strict body limits
+app.use((req, res, next) => {
+  const reqId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  res.setHeader("X-Request-Id", reqId);
+  (req as any).requestId = reqId;
+  next();
+});
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-School-Email, X-Session-Token, X-Auth-Token");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
 
 // Initialize Supabase Client with resilient key resolution
 function deriveSupabaseKey(): string {
@@ -300,6 +345,13 @@ function loadLocalDB(): LocalDB {
 function saveLocalDB(data: LocalDB) {
   fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2));
 }
+
+// Initialize persistent session store
+initializeSessionStore({
+  supabase,
+  loadLocalDB,
+  saveLocalDB
+});
 
 function getSchoolId(req: express.Request): string {
   // ZERO TRUST CLIENT: Validate tenant strictly from authenticated session token
@@ -784,17 +836,17 @@ CREATE TABLE IF NOT EXISTS dugsiga_notifications (
   created_at TEXT
 );
 
--- Grant privileges for direct access
+-- Enable RLS and establish secure tenant isolation
 DO $$
 BEGIN
-  EXECUTE 'ALTER TABLE dugsiga_users DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_students DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_classes DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_subjects DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_exam_scores DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_attendance DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_fees DISABLE ROW LEVEL SECURITY';
-  EXECUTE 'ALTER TABLE dugsiga_settings DISABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_users ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_students ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_classes ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_subjects ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_exam_scores ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_attendance ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_fees ENABLE ROW LEVEL SECURITY';
+  EXECUTE 'ALTER TABLE dugsiga_settings ENABLE ROW LEVEL SECURITY';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 `;
@@ -839,12 +891,6 @@ function hasPermission(role: string, requiredPermission: string): boolean {
 }
 
 const simpleHash = legacySimpleHash;
-
-// ✅ EMAIL VERIFICATION LA SAARAY - Auto verified
-async function sendVerificationEmail(toEmail: string, code: string) {
-  console.log(`Auto-verified user: ${toEmail} (no email required)`);
-  return true;
-}
 
 function expressWithSupabase(config: any, handler: any) {
   let webHandler: any = null;
@@ -989,11 +1035,8 @@ const authRateLimiter = createRateLimiter({
   message: "Isku dayo badan oo galid/diiwaangelin ah. Fadlan sug wax yar (Too many auth attempts. Please wait a moment)."
 });
 
-app.post("/api/auth/signup", authRateLimiter, async (req, res) => {
+app.post("/api/auth/signup", authRateLimiter, validateBody(signupSchema), async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password || !email.includes("@")) {
-    return res.status(400).json({ error: "Email sax ah iyo password fadlan geli." });
-  }
   const cleanEmail = email.trim().toLowerCase();
   const passwordHash = hashPassword(password);
 
@@ -1013,8 +1056,16 @@ app.post("/api/auth/signup", authRateLimiter, async (req, res) => {
         return res.status(400).json({ error: "Email-kan horey ayaa loo diiwaangeliyey. Fadlan 'Sign In' ku gal." });
       }
 
+      // Generate 6-digit verification code
+      const verificationCode = crypto.randomInt(100000, 999999).toString();
+      const codeHash = hashToken(verificationCode);
+      const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
       const { error: insertError } = await supabase.from("dugsiga_users").insert([{
-        email: cleanEmail, password: passwordHash, verified: true
+        email: cleanEmail,
+        password: passwordHash,
+        verified: false,
+        verification_code: codeHash
       }]);
 
       if (insertError) {
@@ -1023,6 +1074,19 @@ app.post("/api/auth/signup", authRateLimiter, async (req, res) => {
         }
         console.warn("Supabase auth insert notice:", insertError.message);
       }
+
+      // Store verification code in persistent settings
+      await supabase.from("dugsiga_settings").upsert({
+        school_id: "__verifications__",
+        key: cleanEmail,
+        value: { codeHash, expiresAt }
+      });
+
+      // Send verification email
+      await sendVerificationEmail({
+        toEmail: cleanEmail,
+        verificationCode
+      });
     } catch (sbErr: any) {
       console.warn("Supabase auth notice:", sbErr?.message || sbErr);
     }
@@ -1030,31 +1094,266 @@ app.post("/api/auth/signup", authRateLimiter, async (req, res) => {
     return res.status(400).json({ error: "Email-kan horey ayaa loo diiwaangeliyey. Fadlan 'Sign In' ku gal." });
   }
 
-  // Always ensure user is saved in local database for seamless offline resilience
+  // Always ensure user is saved in local database for seamless resilience
   if (!db.users.some(u => u.email.toLowerCase() === cleanEmail)) {
-    db.users.push({ email: cleanEmail, password_hash: passwordHash, verified: true });
+    db.users.push({ email: cleanEmail, password_hash: passwordHash, verified: false });
     saveLocalDB(db);
   }
 
   const userPayload: any = {
     email: cleanEmail,
     role: "admin",
-    schoolId: cleanEmail
+    schoolId: cleanEmail,
+    verified: false
   };
   const token = createSessionToken(userPayload);
   userPayload.token = token;
 
   res.json({
     success: true,
-    message: "Diiwaangelintu way guuleysatay! Hadda geli kartaa.",
-    emailSent: false,
+    message: "Diiwaangelintu way guuleysatay! Koodhka xaqiijinta ayaa laguu soo diray email-kaaga.",
     token,
-    user: userPayload
+    user: userPayload,
+    emailSent: true
   });
 });
 
-app.post("/api/auth/verify", async (req, res) => {
-  res.json({ success: true, message: "Verification step is disabled. Automated success." });
+app.post("/api/auth/verify", validateBody(verifyEmailSchema), async (req, res) => {
+  const { email, code } = req.body;
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanCode = code.trim();
+  const codeHash = hashToken(cleanCode);
+
+  let verified = false;
+
+  // 1. Check Supabase
+  if (!useLocalFallback && supabase) {
+    try {
+      const { data } = await supabase
+        .from("dugsiga_settings")
+        .select("value")
+        .eq("school_id", "__verifications__")
+        .eq("key", cleanEmail)
+        .maybeSingle();
+
+      if (data && data.value && data.value.expiresAt > Date.now()) {
+        if (data.value.codeHash === codeHash) {
+          verified = true;
+          await supabase.from("dugsiga_settings").delete().eq("school_id", "__verifications__").eq("key", cleanEmail);
+        }
+      }
+
+      if (!verified) {
+        // Fallback check user table verification_code
+        const { data: userRow } = await supabase.from("dugsiga_users").select("verification_code").ilike("email", cleanEmail).maybeSingle();
+        if (userRow && userRow.verification_code === codeHash) {
+          verified = true;
+        }
+      }
+
+      if (verified) {
+        await supabase.from("dugsiga_users").update({ verified: true, verification_code: null }).ilike("email", cleanEmail);
+      }
+    } catch (e: any) {
+      console.warn("Supabase verify notice:", e?.message || e);
+    }
+  }
+
+  // 2. Check local DB
+  const db = loadLocalDB();
+  const localIdx = db.users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+  if (localIdx > -1) {
+    if (!verified && (db.users[localIdx].verification_code === cleanCode || db.users[localIdx].verification_code === codeHash)) {
+      verified = true;
+    }
+    if (verified) {
+      db.users[localIdx].verified = true;
+      delete db.users[localIdx].verification_code;
+      saveLocalDB(db);
+    }
+  }
+
+  if (!verified) {
+    return res.status(400).json({ error: "Koodhka xaqiijintu ma saxna ama wuu dhacay (Invalid or expired code)." });
+  }
+
+  return res.json({
+    success: true,
+    message: "Akoonkaaga si guul leh ayaa loo xaqiijiyey! Hadda waxaad isticmaali kartaa nidaamka."
+  });
+});
+
+app.post("/api/auth/resend-verification", authRateLimiter, validateBody(resendVerificationSchema), async (req, res) => {
+  const { email } = req.body;
+  const cleanEmail = email.trim().toLowerCase();
+
+  const verificationCode = crypto.randomInt(100000, 999999).toString();
+  const codeHash = hashToken(verificationCode);
+  const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+
+  if (!useLocalFallback && supabase) {
+    try {
+      await supabase.from("dugsiga_settings").upsert({
+        school_id: "__verifications__",
+        key: cleanEmail,
+        value: { codeHash, expiresAt }
+      });
+      await supabase.from("dugsiga_users").update({ verification_code: codeHash }).ilike("email", cleanEmail);
+    } catch {}
+  }
+
+  const db = loadLocalDB();
+  const localUser = db.users.find(u => u.email.toLowerCase() === cleanEmail);
+  if (localUser) {
+    localUser.verification_code = codeHash;
+    saveLocalDB(db);
+  }
+
+  await sendVerificationEmail({
+    toEmail: cleanEmail,
+    verificationCode
+  });
+
+  return res.json({
+    success: true,
+    message: "Koodh cusub oo xaqiijin ah ayaa loo soo diray email-kaaga."
+  });
+});
+
+app.post("/api/auth/forgot-password", authRateLimiter, validateBody(forgotPasswordSchema), async (req, res) => {
+  const { email } = req.body;
+  const cleanEmail = email.trim().toLowerCase();
+
+  const genericResponse = {
+    success: true,
+    message: "Haddii email-kani ku jiro nidaamka, tilmaamaha dib-u-dejinta password-ka ayaa loo soo diray email-kaaga (If this email exists, password reset instructions have been sent)."
+  };
+
+  // Check if user exists
+  let userExists = false;
+  if (!useLocalFallback && supabase) {
+    try {
+      const { data } = await supabase.from("dugsiga_users").select("email").ilike("email", cleanEmail).maybeSingle();
+      if (data) userExists = true;
+    } catch {}
+  }
+  if (!userExists) {
+    const db = loadLocalDB();
+    if (db.users.some(u => u.email.toLowerCase() === cleanEmail)) {
+      userExists = true;
+    }
+  }
+
+  if (!userExists) {
+    return res.json(genericResponse);
+  }
+
+  // Generate secure reset token
+  const rawToken = crypto.randomBytes(32).toString("hex");
+  const tokenH = hashToken(rawToken);
+  const expiresAt = Date.now() + 60 * 60 * 1000; // 1 hour
+
+  if (!useLocalFallback && supabase) {
+    try {
+      await supabase.from("dugsiga_settings").upsert({
+        school_id: "__password_resets__",
+        key: tokenH,
+        value: { email: cleanEmail, expiresAt }
+      });
+    } catch {}
+  }
+
+  const protocol = req.secure || req.headers["x-forwarded-proto"] === "https" ? "https" : "http";
+  const host = req.get("host") || "localhost:3000";
+  const appUrl = (process.env.APP_URL && process.env.APP_URL.startsWith("http")) ? process.env.APP_URL.replace(/\/$/, "") : `${protocol}://${host}`;
+  const resetLink = `${appUrl}/reset-password?token=${rawToken}&email=${encodeURIComponent(cleanEmail)}`;
+
+  await sendPasswordResetEmail({
+    toEmail: cleanEmail,
+    resetLink,
+    expiresInMinutes: 60
+  });
+
+  return res.json(genericResponse);
+});
+
+app.post("/api/auth/reset-password", authRateLimiter, validateBody(resetPasswordSchema), async (req, res) => {
+  const { email, token, newPassword } = req.body;
+  const cleanEmail = email.trim().toLowerCase();
+  const tokenH = hashToken(token.trim());
+
+  let tokenValid = false;
+
+  if (!useLocalFallback && supabase) {
+    try {
+      const { data } = await supabase
+        .from("dugsiga_settings")
+        .select("value")
+        .eq("school_id", "__password_resets__")
+        .eq("key", tokenH)
+        .maybeSingle();
+
+      if (data && data.value && data.value.expiresAt > Date.now()) {
+        if (data.value.email.toLowerCase() === cleanEmail) {
+          tokenValid = true;
+          // Invalidate single-use token immediately
+          await supabase.from("dugsiga_settings").delete().eq("school_id", "__password_resets__").eq("key", tokenH);
+        }
+      }
+    } catch (e: any) {
+      console.warn("Supabase reset password check notice:", e?.message || e);
+    }
+  }
+
+  if (!tokenValid) {
+    return res.status(400).json({ error: "Link-ga dib-u-dejintu ma shaqeynayo ama wuu dhacay (Invalid or expired reset token)." });
+  }
+
+  const freshHash = hashPassword(newPassword);
+
+  // Update password in Supabase
+  if (!useLocalFallback && supabase) {
+    try {
+      await supabase.from("dugsiga_users").update({ password: freshHash }).ilike("email", cleanEmail);
+    } catch {}
+  }
+
+  // Update password in local DB
+  const db = loadLocalDB();
+  const localIdx = db.users.findIndex(u => u.email.toLowerCase() === cleanEmail);
+  if (localIdx > -1) {
+    db.users[localIdx].password_hash = freshHash;
+    saveLocalDB(db);
+  }
+
+  // Invalidate all existing sessions for this user
+  await revokeAllUserSessions(cleanEmail);
+
+  return res.json({
+    success: true,
+    message: "Password-kaaga si guul leh ayaa loo beddelay. Dhammaan galaangalladii hore waa la xiray. Hadda ku gal password-ka cusub."
+  });
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  let token = "";
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7).trim();
+  } else if (typeof req.headers["x-session-token"] === "string") {
+    token = (req.headers["x-session-token"] as string).trim();
+  } else if (req.body?.token) {
+    token = String(req.body.token).trim();
+  }
+
+  if (token) {
+    revokeSession(token);
+  }
+
+  return res.json({
+    success: true,
+    message: "Waad ka baxday nidaamka (Successfully logged out)."
+  });
 });
 
 app.get("/api/documentation-pdf", (req, res) => {
@@ -1429,6 +1728,9 @@ app.post("/api/students", async (req, res) => {
         }
       }
       if (error) throw error;
+      const db = loadLocalDB();
+      db.students.push({ ...fullStudent, schoolId, fullName: student.fullName.trim() });
+      saveLocalDB(db);
       return res.json(fullStudent);
     } catch (e: any) { return handleSupabaseError(res, e, "Diiwaangelinta Ardayga (Add Student)"); }
   } else {
@@ -1438,6 +1740,47 @@ app.post("/api/students", async (req, res) => {
     db.students.push({ ...fullStudent, schoolId, fullName: student.fullName.trim() });
     saveLocalDB(db);
     res.json(fullStudent);
+  }
+});
+
+app.get("/api/students/:id", async (req, res) => {
+  const schoolId = getSchoolId(req);
+  const { id } = req.params;
+  if (!useLocalFallback && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("dugsiga_students")
+        .select("*")
+        .eq("id", id)
+        .eq("school_id", schoolId)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) return res.status(404).json({ error: "Ardayga lama helin (Student not found)" });
+
+      return res.json({
+        id: data.id,
+        fullName: data.full_name,
+        class: data.class,
+        gender: data.gender,
+        guardianPhone: data.guardian_phone,
+        status: data.status || "active",
+        createdAt: data.created_at,
+        photo: data.photo || "",
+        dateOfBirth: data.date_of_birth || "",
+        address: data.address || "",
+        guardianName: data.guardian_name || "",
+        section: data.section || "",
+        rollNumber: data.roll_number || ""
+      });
+    } catch (e: any) {
+      return handleSupabaseError(res, e, "Soo qaadista Ardayga (Fetch Single Student)");
+    }
+  } else {
+    const db = loadLocalDB();
+    const student = (db.students || []).find((s: any) => s.id === id && s.schoolId === schoolId);
+    if (!student) return res.status(404).json({ error: "Ardayga lama helin (Student not found)" });
+    return res.json(student);
   }
 });
 
@@ -2120,10 +2463,24 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   if (err && (err.message === "UNAUTHENTICATED" || err.message?.includes("UNAUTHENTICATED") || err.status === 401)) {
     return res.status(401).json({ error: "Fadlan soo gal (login) marka hore." });
   }
-  console.error("Server error:", err?.message || err);
+  const reqId = (req as any).requestId || "unknown";
+  console.error(`[Server Error ${reqId}] ${req.method} ${req.url}:`, err?.message || err);
   if (!res.headersSent) {
-    res.status(500).json({ error: "Cillad farsamo ayaa dhacday." });
+    res.status(500).json({ 
+      error: "Cillad farsamo ayaa dhacday (An internal server error occurred).",
+      requestId: reqId
+    });
   }
+});
+
+// Graceful process signal handling
+process.on("SIGTERM", () => {
+  console.log("[Server] SIGTERM received. Gracefully shutting down...");
+  process.exit(0);
+});
+process.on("SIGINT", () => {
+  console.log("[Server] SIGINT received. Shutting down...");
+  process.exit(0);
 });
 
 if (process.env.DISABLE_HMR !== "true") {

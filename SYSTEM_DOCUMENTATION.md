@@ -303,7 +303,9 @@ Faylka `.env` ama `.env.example` wuxuu xafidaa furayaasha muhiimka ah ee nidaamk
 
 ## 7. AUTOMATED TESTS & CONTINUOUS INTEGRATION (CI)
 * **Automated Integration Test Suite (`npm test`):**
-  Wuxuu fuliyaa 16 tijaabo oo dhammeystiran oo tijaabiya:
+  Wuxuu fuliyaa **28 tijaabo** oo dhammeystiran oo tijaabiya laba qeybood oo waaweyn:
+  
+  **Qaybta 1: Finance Integration Tests (16 Tests):**
   1. Diidmada codsiyada aan fasaxnayn (401 Unauthorized)
   2. Ka hortagga xatooyada aqoonsiga dugsiga (Tenant impersonation blocked)
   3. Diiwaangelinta ammaan ah iyo dhalinta session token
@@ -319,6 +321,22 @@ Faylka `.env` ama `.env.example` wuxuu xafidaa furayaasha muhiimka ah ee nidaamk
   13. Xisaab-xirka ardayga (Student Financial Statement)
   14. Qorsheynta miisaaniyadda (Budgets)
   15. Mushahaarka shaqaalaha iyo xiriirinta kharashka (Payroll & Linked Expense)
+  16. Ka hortagga lacag-dhaafka (Overpayment protection)
+
+  **Qaybta 2: Auth, Tenancy & Security Hardening Tests (12 Tests):**
+  17. Diiwaangelinta School A iyo soo saarista session token
+  18. Diiwaangelinta School B iyo soo saarista session token
+  19. Xaqiijinta xogta gelitaanka ee Zod (Validation error handling)
+  20. Abuurista arday School A
+  21. Kala soocidda xogta (Tenant Isolation): School B ma akhrisan karo ardayda School A (IDOR blocked)
+  22. Kala soocidda xogta: School B ma tirtiri karo ardayda School A
+  23. Kala soocidda xogta: Liiska School B kuma jiraan ardayda School A
+  24. Dib-u-dejinta password-ka (Forgot password generic response against enumeration)
+  25. Diidmada reset password haddii token-ku khaldan yahay
+  26. Ka bixidda nidaamka (Logout) oo si toos ah u baabi'isa session token-ka
+  27. Dib-u-galista password-ka saxda ah oo bixisa token cusub
+  28. Diidmada password-ka khaldan
+
 * **GitHub Actions CI Workflow (`.github/workflows/ci.yml`):**
   Si toos ah ayuu u hubiyaa code-ka, typecheck/lint (`npm run lint`), build (`npm run build`), iyo test suite (`npm test`) mar kasta oo la sameeyo push ama pull request.
 
